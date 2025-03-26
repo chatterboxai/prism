@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
 export default function HomePage() {
   const [bots, setBots] = useState([
@@ -22,14 +23,18 @@ export default function HomePage() {
   return (
     <div className="p-10 bg-gray-100 min-h-screen relative">
       <h1 className="text-3xl font-bold mb-6 text-center">Home Page</h1>
+
       <div className="space-y-6 max-w-2xl mx-auto">
         {bots.map((bot, index) => (
-          <div key={index} className="border p-6 rounded-lg shadow-lg bg-white text-lg">
-            <h2 className="font-bold text-xl">{bot.name}</h2>
-            <p className="text-gray-700 text-lg">{bot.description}</p>
-          </div>
+          <Link key={index} href={`/bot/${bot.name.toLowerCase()}`}>
+            <div className="cursor-pointer border p-6 rounded-lg shadow-lg bg-white text-lg hover:shadow-xl transition">
+              <h2 className="font-bold text-xl">{bot.name}</h2>
+              <p className="text-gray-700 text-lg">{bot.description}</p>
+            </div>
+          </Link>
         ))}
       </div>
+
       <div className="flex justify-center mt-6">
         <button
           onClick={() => setIsModalOpen(true)}
