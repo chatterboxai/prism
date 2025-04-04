@@ -40,28 +40,58 @@ export default function ChatPage() {
     return "Let me get back to you on that!"
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
-
+  
     const userMessage: Message = {
       role: "user",
       content: input.trim(),
     }
-
+  
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
-
-    setTimeout(() => {
-      const botMessage: Message = {
-        role: "bot",
-        content: generateBotResponse(userMessage.content),
+  
+    try {
+      const response = await fetch("http://localhost:8000/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: userMessage.content }),
+      })
+  
+      if (response.status === 429) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "bot",
+            content: "You're sending messages too quickly. Please wait a moment.",
+          },
+        ])
+      } else if (!response.ok) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "bot", content: "Something went wrong. Please try again later." },
+        ])
+      } else {
+        const data = await response.json()
+        setMessages((prev) => [
+          ...prev,
+          { role: "bot", content: data.message || "Reply from bot." },
+        ])
       }
-      setMessages((prev) => [...prev, botMessage])
-      setIsLoading(false)
-    }, 800)
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "bot", content: "Network error. Please try again later." },
+      ])
+    }
+  
+    setIsLoading(false)
   }
+  
 
   return (
     <div className="flex flex-col h-screen bg-white">
