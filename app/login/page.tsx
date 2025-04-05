@@ -7,6 +7,7 @@ import { signIn } from 'aws-amplify/auth';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/authcontext';
 import { fetchAuthSession } from 'aws-amplify/auth';
+import ProtectedRoute from "../components/protectedroute";
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');

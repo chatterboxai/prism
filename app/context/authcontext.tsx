@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useState, ReactNode, useContext } from "react";
-import { signIn as awsSignIn, signOut } from "aws-amplify/auth";
+import { createContext, useState, ReactNode, useContext, useEffect } from "react";
+import { fetchAuthSession, signIn as awsSignIn, signOut } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
 
 // Define types for the AuthContext
@@ -10,6 +10,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setIsAuthenticated: (authStatus: boolean) => void;
+  checkSession: () => Promise<void>; // Add method to check session
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,6 +19,18 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
+
+  // Function to check if the user is authenticated
+  const checkSession = async () => {
+    try {
+      const session = await fetchAuthSession();
+      return session.tokens?.accessToken;
+    } catch (error) {
+      console.error("Error checking session:", error);
+      return false;
+    }
+  };
+  
 
   // Login function: Authenticate user using AWS Amplify signIn
   const login = async (username: string, password: string) => {
@@ -65,8 +78,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  useEffect(() => {
+    checkSession(); // Check session status on app load
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout, setIsAuthenticated }}>
+    <AuthContext.Provider value={{ isAuthenticated, login, logout, setIsAuthenticated, checkSession }}>
       {children}
     </AuthContext.Provider>
   );

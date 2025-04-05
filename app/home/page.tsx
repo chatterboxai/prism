@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { fetchAuthSession } from "aws-amplify/auth";
 import { useRouter } from "next/navigation"; // To handle redirection
+import { useAuth } from "../context/authcontext"; // Import useAuth hook
 
 export default function HomePage() {
   const [bots, setBots] = useState<{ id: number; name: string; description: string }[]>([]);
@@ -11,27 +11,31 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);  // State for modal visibility
   const [newBot, setNewBot] = useState({ name: "", description: "" });  // State for new bot inputs
+  const { isAuthenticated, checkSession } = useAuth(); // Use Auth context
+
+  const [accessToken, setAccessToken] = useState<string | null>(null); // State to store the access token
+
   const router = useRouter();
 
   useEffect(() => {
     const fetchChatbots = async () => {
+      // Check if the user is authenticated before fetching chatbots
+      const token = await checkSession(); // Ensure the session is checked before proceeding
+
+      if (!token) {
+        setError("User not authenticated.");
+        router.push("/login"); // Redirect to login if not authenticated
+        return;
+      }
+
+      setAccessToken(token); // Set the access token in the state
+
       try {
-        // Fetch session and check if the user is authenticated
-        const session = await fetchAuthSession();
-        const accessToken = session.tokens?.accessToken;
-
-        // If the user is not authenticated, redirect to login page
-        if (!accessToken) {
-          setError("User not authenticated.");
-          router.push("/login"); // Redirect to login page
-          return;
-        }
-
         // Fetch chatbots from the API
         const response = await fetch("http://127.0.0.1:8000/api/v1/chatbots", {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${accessToken}`,
+            Authorization: `Bearer ${token}`,  // Use the access token from the state
             "Content-Type": "application/json",
           },
         });
@@ -59,7 +63,7 @@ export default function HomePage() {
     };
 
     fetchChatbots();
-  }, [router]); // Add router as a dependency to trigger effect properly
+  }, [isAuthenticated, router]); // Add isAuthenticated and router as dependencies
 
   const handleCreateBot = async () => {
     if (!newBot.name || !newBot.description) {
@@ -67,20 +71,17 @@ export default function HomePage() {
       return;
     }
 
+    if (!accessToken) {
+      setError("No access token available.");
+      return;
+    }
+
     try {
-      const session = await fetchAuthSession();
-      const accessToken = session.tokens?.accessToken;
-
-      if (!accessToken) {
-        setError("User not authenticated.");
-        return;
-      }
-
       // Create a new bot via POST request
       const response = await fetch("http://127.0.0.1:8000/api/v1/chatbots", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,  // Use the access token from the state
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
