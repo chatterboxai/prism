@@ -1,135 +1,218 @@
-"use client"
+'use client';
 
-import { useParams } from "next/navigation"
-import { useState, useEffect } from "react"
-import { FileIcon } from "lucide-react"
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation'; // To handle redirection
+import { useAuth } from '../../context/authcontext'; // Import useAuth hook
+import { useParams } from 'next/navigation'; // To extract dynamic URL parameters
 
-// Mock data - replace with actual API call
-const mockBots: Record<string, {
-    name: string
-    description: string
-    dateCreated: string
-    lastUpdated: string
-    isPublic: boolean
-    pdfSources: string[]
-  }> = {
-    bot1: {
-      name: "Bot1",
-      description: "This is a smart assistant for answering questions",
-      dateCreated: "2023-10-15",
-      lastUpdated: "2023-11-20",
-      isPublic: true,
-      pdfSources: ["Research Paper.pdf", "User Manual.pdf", "Technical Documentation.pdf"],
-    },
-    bot2: {
-      name: "Bot2",
-      description: "A specialized bot for data analysis",
-      dateCreated: "2023-09-05",
-      lastUpdated: "2023-11-18",
-      isPublic: false,
-      pdfSources: ["Data Dictionary.pdf", "Analysis Guidelines.pdf"],
-    },
-  }
-  
+export default function BotDetailsPage() {
+  const params = useParams();
+  const bot_id  =params.botId;
+  //const { bot_id } = useParams().botId; // Extract bot_id from the URL
+  const { isAuthenticated, checkSession } = useAuth(); // Use Auth context
+  const [botDetails, setBotDetails] = useState<any>(null); // State to store bot details
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);  // State for modal visibility
+  const [updatedBot, setUpdatedBot] = useState({ name: "", description: "" });  // State for bot editing inputs
+  const [accessToken, setAccessToken] = useState<string | null>(null); // State to store access token
 
-export default function BotPage() {
-  const params = useParams()
-  const botId = params.botId as string
-  const [bot, setBot] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-
+  const router = useRouter();
   useEffect(() => {
-    // Simulate API fetch
-    const fetchBot = () => {
-      setLoading(true)
-      // In a real app, replace with actual API call
-      setTimeout(() => {
-        setBot(mockBots[botId] || null)
-        setLoading(false)
-      }, 500)
+    const fetchBotDetails = async () => {
+      // Ensure user is authenticated before fetching bot details
+      const token = await checkSession(); // Ensure session is checked before proceeding
+  
+      if (!token) {
+        setError("User not authenticated.");
+        router.push("/login"); // Redirect to login if not authenticated
+        return;
+      }
+
+      setAccessToken(token); // Set the access token in the state
+      console.log(token)
+      try {
+        // Fetch bot details from the API
+        const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,  // Use the access token from the state
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch bot details: ${response.statusText}`);
+        }
+
+        const jsonData = await response.json();
+        console.log("API Response is :", jsonData); // Debugging
+
+        // Set the bot details if available
+        if (jsonData) {
+          setBotDetails(jsonData);
+          setUpdatedBot({ name: jsonData.name, description: jsonData.description }); // Pre-fill the modal with current details
+        } else {
+          setError("Bot not found.");
+        }
+      } catch (err) {
+        console.error("Error fetching bot details:", err);
+        setError("Failed to load bot details.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (bot_id) {
+      fetchBotDetails();
+    }
+  }, [isAuthenticated, bot_id, router]); // Fetch bot details when bot_id changes
+
+
+  const handleUpdateBot = async () => {
+    if (!updatedBot.name || !updatedBot.description) {
+      setError("Please provide both name and description.");
+      return;
     }
 
-    fetchBot()
-  }, [botId])
+    if (!accessToken) {
+      setError("No access token available.");
+      return;
+    }
 
-  if (loading) {
-    return (
-      <div className="p-10 min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
-      </div>
-    )
-  }
+    try {
+      // Update bot details via PUT request
+      const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,  // Use the access token from the state
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: updatedBot.name,
+          description: updatedBot.description,
+        }),
+      });
 
-  if (!bot) {
-    return (
-      <div className="p-10 min-h-screen flex items-center justify-center">
-        <div className="text-xl">Bot not found</div>
-      </div>
-    )
-  }
+      if (!response.ok) {
+        throw new Error(`Failed to update chatbot: ${response.statusText}`);
+      }
+
+      const updatedBotDetails = await response.json();
+      console.log("Bot Updated:", updatedBotDetails);
+
+      // Update the UI with the newly updated bot details
+      setBotDetails(updatedBotDetails);
+      setUpdatedBot({ name: updatedBotDetails.name, description: updatedBotDetails.description }); // Reset modal inputs
+      setIsModalOpen(false);  // Close the modal
+    } catch (err) {
+      console.error("Error updating chatbot:", err);
+      setError("Failed to update chatbot.");
+    }
+  };
+
+  const handleDeleteBot = async () => {
+    if (!accessToken) {
+      setError("No access token available.");
+      return;
+    }
+
+    try {
+      // Delete the bot via DELETE request
+      const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,  // Use the access token from the state
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete chatbot: ${response.statusText}`);
+      }
+
+      console.log("Bot Deleted");
+
+      // Redirect back to the home page after deletion
+      router.push("/");
+    } catch (err) {
+      console.error("Error deleting chatbot:", err);
+      setError("Failed to delete chatbot.");
+    }
+  };
 
   return (
-    <div className="p-10 bg-gray-100 min-h-screen">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* Top Section - Bot Details */}
-        <div className="bg-white p-6 rounded-lg shadow-lg">
-          <div className="flex justify-between items-start">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold">{bot.name}</h1>
-              <p className="text-gray-700">{bot.description}</p>
-              <div className="text-sm text-gray-500 space-y-1">
-                <p>Date Created: {bot.dateCreated}</p>
-                <p>Last Updated: {bot.lastUpdated}</p>
-                <div className="flex items-center mt-2">
-                    <span className="mr-2">Public:</span>
-                    <button
-                        onClick={() => setBot({ ...bot, isPublic: !bot.isPublic })}
-                        className={`w-10 h-5 rounded-full flex items-center transition-colors duration-200 ${bot.isPublic ? "bg-green-500" : "bg-gray-300"}`}
-                    >
-                        <div
-                        className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform duration-200 ${bot.isPublic ? "translate-x-5" : "translate-x-1"}`}
-                        ></div>
-                    </button>
-                    </div>
-              </div>
-            </div>
-            <div className="flex space-x-3">
-              <Link href={`/chat/${botId}/default`}>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    Chat
-                </button>
-              </Link>
-              <Link href={`/bot/${botId}/dialogues`}>
-                <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                    Search dialogue
-                </button>
-              </Link>
+    <div className="p-10 bg-gray-100 min-h-screen flex flex-col items-center">
+      <h1 className="text-3xl font-bold mb-6">Bot Details</h1>
+
+      {loading ? (
+        <p className="text-lg text-gray-600">Loading bot details...</p>
+      ) : error ? (
+        <p className="text-red-500">{error}</p>
+      ) : botDetails ? (
+        <>
+          <div className="w-full max-w-2xl">
+            <div className="border p-6 rounded-lg shadow-lg bg-white mb-6">
+              <h2 className="font-bold text-xl">{botDetails.name}</h2>
+              <p className="text-gray-700">{botDetails.description}</p>
+              <p>Date created: <strong>{botDetails.created_at}</strong></p>
+              <p>Last updated: <strong>{botDetails.updated_at}</strong></p>
             </div>
           </div>
-        </div>
 
-        {/* Middle Section - PDF Sources */}
-        <div className="bg-white p-6 rounded-lg shadow-lg">
-          <h2 className="text-lg font-semibold mb-4">Sources (Not clickable, just display)</h2>
-          <div className="flex flex-wrap gap-3">
-            {bot.pdfSources.map((pdf: string, index: number) => (
-              <div key={index} className="flex items-center px-4 py-2 bg-gray-100 rounded-lg border border-gray-200">
-                <FileIcon className="w-4 h-4 mr-2 text-gray-500" />
-                <span>{pdf}</span>
-              </div>
-            ))}
+          <div className="flex justify-center space-x-4 mt-6">
+            <button
+              onClick={() => setIsModalOpen(true)}  // Open modal to edit bot details
+              className="px-4 py-2 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
+            >
+              Edit
+            </button>
+            <button
+              onClick={handleDeleteBot}  // Delete bot
+              className="px-4 py-2 bg-red-600 text-white text-lg rounded-lg shadow-md hover:bg-red-700"
+            >
+              Delete
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="text-gray-600">Bot not found.</p>
+      )}
+
+      {/* Modal for editing bot details */}
+      {isModalOpen && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-90 transition-all duration-300 ease-in-out">
+          <div className="bg-white p-8 rounded-lg shadow-xl w-96 relative">
+            <button
+              onClick={() => setIsModalOpen(false)}  // Close modal
+              className="absolute top-3 right-3 text-2xl"
+            >
+              &times;
+            </button>
+            <h2 className="text-2xl font-semibold mb-4 text-center">Edit Bot</h2>
+            <input
+              type="text"
+              placeholder="Name"
+              value={updatedBot.name}
+              onChange={(e) => setUpdatedBot({ ...updatedBot, name: e.target.value })}
+              className="w-full border p-3 mb-4 text-lg rounded-md"
+            />
+            <input
+              type="text"
+              placeholder="Description"
+              value={updatedBot.description}
+              onChange={(e) => setUpdatedBot({ ...updatedBot, description: e.target.value })}
+              className="w-full border p-3 mb-4 text-lg rounded-md"
+            />
+            <button
+              onClick={handleUpdateBot}  // Update bot details
+              className="w-full px-4 py-3 bg-green-600 text-white text-lg rounded-lg shadow-md hover:bg-green-700"
+            >
+              Save Changes
+            </button>
           </div>
         </div>
-
-        {/* Bottom Section - Browse File Button */}
-        <div className="flex justify-center mt-8">
-          <button className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
-            Browse file
-          </button>
-        </div>
-      </div>
+      )}
     </div>
-  )
+  );
 }
-

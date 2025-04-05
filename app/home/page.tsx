@@ -120,7 +120,7 @@ export default function HomePage() {
       ) : (
         <div className="w-full max-w-2xl">
           {bots.map((bot) => (
-            <Link key={bot.id} href={`/bot/${bot.name.toLowerCase()}`}>
+            <Link key={bot.id} href={`/bot/${bot.id}`}>
               <div className="cursor-pointer border p-6 rounded-lg shadow-lg bg-white mb-6 hover:shadow-xl transition">
                 <h2 className="font-bold text-xl">{bot.name}</h2>
                 <p className="text-gray-700">{bot.description}</p>

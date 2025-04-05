@@ -1,78 +1,55 @@
-// pages/login.tsx
-
 "use client";
 
-import { useState, FormEvent, useEffect } from 'react';
-import { signIn } from 'aws-amplify/auth';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../context/authcontext';
-import { fetchAuthSession } from 'aws-amplify/auth';
-import ProtectedRoute from "../components/protectedroute";
+import { useState, FormEvent, useEffect } from "react";
+import { signIn } from "aws-amplify/auth";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../context/authcontext"; // Import the useAuth hook
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const {setIsAuthenticated } = useAuth();
- 
+  const { setIsAuthenticated, checkSession } = useAuth(); // Use checkSession from AuthContext
 
   useEffect(() => {
     // Check authentication status as soon as the component is mounted
     const checkAuthStatus = async () => {
-      try {
-        // Check if the user is authenticated (this may depend on your auth provider, e.g., AWS Cognito)
-        const session = await fetchAuthSession(); // 
-        const accessToken = session.tokens?.accessToken;
-  
-        if (accessToken) {
-          console.log("User is authenticated");
-         
-          router.push('/home'); // Redirect to home if user is authenticated
-        } else {
-          console.log("User is not authenticated");
-          // Optionally handle unauthenticated case (e.g., show login page)
-          router.push('/login'); // Redirect to login if user is not authenticated
-        }
-      } catch (error) {
-        console.error("Error checking authentication status:", error);
-        // Handle error, maybe redirect to login or show an error message
-        router.push('/login');
+      const isAuthenticated = await checkSession(); // Call checkSession from context
+      if (isAuthenticated) {
+        console.log("User is already authenticated");
+        router.push("/home"); // Redirect to home if the user is already authenticated
       }
     };
-  
-    // Call the checkAuthStatus function when the component mounts
-    checkAuthStatus();
-  }, [router]); // The empty array ensures this only runs on mount
-  
+
+    checkAuthStatus(); // Run checkAuthStatus on mount
+  }, [router, checkSession]); // Depend on checkSession and router
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     if (!email || !password) {
-      setError('Please fill in all fields.');
+      setError("Please fill in all fields.");
       setLoading(false);
       return;
     }
 
     try {
-      
       const { isSignedIn, nextStep } = await signIn({ username: email, password });
-      
+
       if (isSignedIn) {
         setIsAuthenticated(true); // Set authentication state
-        router.push('/home');
+        router.push("/home");
       } else {
-        
         handleNextSteps(nextStep);
       }
     } catch (err) {
-      console.error('Sign-in error:', err);
-      setError(err instanceof Error ? err.message : 'Sign-in failed.');
+      console.error("Sign-in error:", err);
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
     } finally {
       setLoading(false);
     }
@@ -81,18 +58,18 @@ export default function LoginPage() {
   const handleNextSteps = (nextStep: any) => {
     if (!nextStep) return;
     switch (nextStep.signInStep) {
-      case 'CONFIRM_SIGN_IN_WITH_SMS_CODE':
-      case 'CONFIRM_SIGN_IN_WITH_TOTP_CODE':
-        setError('MFA required. This demo does not support MFA.');
+      case "CONFIRM_SIGN_IN_WITH_SMS_CODE":
+      case "CONFIRM_SIGN_IN_WITH_TOTP_CODE":
+        setError("MFA required. This demo does not support MFA.");
         break;
-      case 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED':
-        router.push('/reset-password');
+      case "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED":
+        router.push("/reset-password");
         break;
-      case 'CONFIRM_SIGN_UP':
-        setError('Please verify your email before signing in.');
+      case "CONFIRM_SIGN_UP":
+        setError("Please verify your email before signing in.");
         break;
       default:
-        setError('Unexpected authentication step required.');
+        setError("Unexpected authentication step required.");
     }
   };
 
