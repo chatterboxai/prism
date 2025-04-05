@@ -61,12 +61,48 @@ export default function HomePage() {
     fetchChatbots();
   }, [router]); // Add router as a dependency to trigger effect properly
 
-  const handleCreateBot = () => {
-    if (newBot.name && newBot.description) {
-      // Simulating creating a new bot by adding it to the list (you should send a POST request to the backend)
-      setBots([...bots, newBot]);
+  const handleCreateBot = async () => {
+    if (!newBot.name || !newBot.description) {
+      setError("Please provide both name and description.");
+      return;
+    }
+
+    try {
+      const session = await fetchAuthSession();
+      const accessToken = session.tokens?.accessToken;
+
+      if (!accessToken) {
+        setError("User not authenticated.");
+        return;
+      }
+
+      // Create a new bot via POST request
+      const response = await fetch("http://127.0.0.1:8000/api/v1/chatbots", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: newBot.name,
+          description: newBot.description,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create chatbot: ${response.statusText}`);
+      }
+
+      const createdBot = await response.json();
+      console.log("Bot Created:", createdBot);
+
+      // Optionally, update the UI with the newly created bot
+      setBots([...bots, createdBot]);
       setNewBot({ name: "", description: "" });  // Reset inputs
       setIsModalOpen(false);  // Close the modal
+    } catch (err) {
+      console.error("Error creating chatbot:", err);
+      setError("Failed to create chatbot.");
     }
   };
 

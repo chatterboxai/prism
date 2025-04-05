@@ -15,7 +15,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const { isAuthenticated, setIsAuthenticated } = useAuth();
+  const {setIsAuthenticated } = useAuth();
  
 
   useEffect(() => {
@@ -23,12 +23,12 @@ export default function LoginPage() {
     const checkAuthStatus = async () => {
       try {
         // Check if the user is authenticated (this may depend on your auth provider, e.g., AWS Cognito)
-        const session = await fetchAuthSession(); // This is just an example. Modify as per your auth flow.
+        const session = await fetchAuthSession(); // 
         const accessToken = session.tokens?.accessToken;
   
         if (accessToken) {
           console.log("User is authenticated");
-          // You could redirect to the home page here
+         
           router.push('/home'); // Redirect to home if user is authenticated
         } else {
           console.log("User is not authenticated");
@@ -59,12 +59,14 @@ export default function LoginPage() {
     }
 
     try {
+      
       const { isSignedIn, nextStep } = await signIn({ username: email, password });
-
+      
       if (isSignedIn) {
         setIsAuthenticated(true); // Set authentication state
         router.push('/home');
       } else {
+        
         handleNextSteps(nextStep);
       }
     } catch (err) {
