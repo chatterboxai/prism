@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { signIn, fetchAuthSession} from "aws-amplify/auth";
+import { signIn, fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { CognitoUserPool, CognitoUser, AuthenticationDetails } from 'amazon-cognito-identity-js';
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -11,7 +12,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-
+  
   // Function to check session when user navigates to /login
 
   const checkAuthenticatedUser = async () => {
@@ -26,7 +27,6 @@ export default function Login() {
       console.log("No authenticated session found, continuing to login");
     }
   };
-
 
   useEffect(() => {
     // Run session check only when the component is mounted
@@ -56,14 +56,80 @@ export default function Login() {
 
       if (isSignedIn) {
         // Redirect to home page or dashboard after successful login
-        router.push("/home");
-      } else if (
+        const { username, userId, signInDetails } = await getCurrentUser();
+        console.log("username", username);
+        console.log("userId", userId);
+        console.log("password", password);
+        console.log("sign-in details", signInDetails);
+    
+        // Access environment variables (Bun supports this syntax)
+        const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+        console.log("COGNITO_CLIENT_ID:", cognitoClientId);
+        console.log("COGNITO_USER_POOL_ID:", process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID);
+        const region = 'ap-southeast-1';
+        // Initiate Cognito auth before redirecting
+        try {
+          const response = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-amz-json-1.1',
+                    'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth'
+                },
+                body: JSON.stringify({
+                    AuthFlow: 'USER_PASSWORD_AUTH',
+                    ClientId: cognitoClientId,
+                    AuthParameters: {
+                        USERNAME: username,
+                        PASSWORD: password
+                    }
+                })
+            });
+            
+            const authResult = await response.json();
+            const accessToken = authResult.AuthenticationResult?.AccessToken;
+            console.log("Access Token:", accessToken);
+            
+            if (accessToken) {
+              try {
+                  const profileResponse = await fetch('http://127.0.0.1:8000/api/v1/users/profile', {
+                      method: 'GET',
+                      headers: {
+                          'Authorization': `Bearer ${accessToken}`,
+                          'Content-Type': 'application/json'
+                      }
+                  });
+                  
+                  if (profileResponse.ok) {
+                      const profileData = await profileResponse.json();
+                      console.log("User Profile Data:", profileData);
+                      
+                      // You might want to store this profile data in state/context
+                      // For example:
+                      // setUserProfile(profileData);
+                      // or
+                      // localStorage.setItem('userProfile', JSON.stringify(profileData));
+                      
+                      // Now redirect to home page
+                      router.push("/home");
+                  } else {
+                      console.error("Error fetching profile:", profileResponse.status, await profileResponse.text());
+                  }
+              } catch (profileError) {
+                  console.error("Profile fetch error:", profileError);
+              }
+          } else {
+              console.error("No access token received");
+          }
+        } catch (error) {
+            console.error("Authentication error:", error);
+        }
+    } else if (
         nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_SMS_CODE" ||
         nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_TOTP_CODE"
       ) {
         // Handle MFA if needed
         setError(
-          "MFA confirmation required. This demo doesn't handle MFA yet."
+          "MFA confirmation required. This demo doesn't ha  ndle MFA yet."
         );
       } else if (
         nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED"
