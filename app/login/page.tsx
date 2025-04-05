@@ -33,7 +33,7 @@ export default function Login() {
 
       if (isSignedIn) {
         // Redirect to home page or dashboard after successful login
-        router.push("/");
+        router.push("/home");
       } else if (
         nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_SMS_CODE" ||
         nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_TOTP_CODE"
