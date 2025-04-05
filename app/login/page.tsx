@@ -13,10 +13,13 @@ export default function Login() {
   const router = useRouter();
 
   // Function to check session when user navigates to /login
+
   const checkAuthenticatedUser = async () => {
     try {
       const session = await fetchAuthSession(); // Check if the user has an active session
-      if (session) {
+      //console.log(session.tokens.idToken & session.tokens.accessToken)
+      console.log(session.tokens.accessToken)
+      if (session.tokens.accessToken) {
         router.push("/home"); // Redirect to /home if the user is already signed in
       }
     } catch (error) {
@@ -24,10 +27,12 @@ export default function Login() {
     }
   };
 
+
   useEffect(() => {
     // Run session check only when the component is mounted
     checkAuthenticatedUser();
   }, []); // Empty dependency array ensures the check runs only once
+
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
