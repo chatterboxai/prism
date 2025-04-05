@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { signIn } from "aws-amplify/auth";
+import { signIn, fetchAuthSession} from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -10,6 +11,23 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  // Function to check session when user navigates to /login
+  const checkAuthenticatedUser = async () => {
+    try {
+      const session = await fetchAuthSession(); // Check if the user has an active session
+      if (session) {
+        router.push("/home"); // Redirect to /home if the user is already signed in
+      }
+    } catch (error) {
+      console.log("No authenticated session found, continuing to login");
+    }
+  };
+
+  useEffect(() => {
+    // Run session check only when the component is mounted
+    checkAuthenticatedUser();
+  }, []); // Empty dependency array ensures the check runs only once
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
