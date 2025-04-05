@@ -1,42 +1,44 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation'; // To handle redirection
-import { useAuth } from '../../context/authcontext'; // Import useAuth hook
-import { useParams } from 'next/navigation'; // To extract dynamic URL parameters
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../../context/authcontext';
+import { useParams } from 'next/navigation';
 
 export default function BotDetailsPage() {
   const params = useParams();
-  const bot_id  =params.botId;
-  //const { bot_id } = useParams().botId; // Extract bot_id from the URL
-  const { isAuthenticated, checkSession } = useAuth(); // Use Auth context
-  const [botDetails, setBotDetails] = useState<any>(null); // State to store bot details
+  const bot_id = params.botId;
+  const { isAuthenticated, checkSession } = useAuth();
+  const [botDetails, setBotDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);  // State for modal visibility
-  const [updatedBot, setUpdatedBot] = useState({ name: "", description: "" });  // State for bot editing inputs
-  const [accessToken, setAccessToken] = useState<string | null>(null); // State to store access token
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [updatedBot, setUpdatedBot] = useState({ name: "", description: "" });
+  const [accessToken, setAccessToken] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
 
   const router = useRouter();
+
   useEffect(() => {
     const fetchBotDetails = async () => {
       // Ensure user is authenticated before fetching bot details
-      const token = await checkSession(); // Ensure session is checked before proceeding
+      const token = await checkSession();
   
       if (!token) {
         setError("User not authenticated.");
-        router.push("/login"); // Redirect to login if not authenticated
+        router.push("/login");
         return;
       }
 
-      setAccessToken(token); // Set the access token in the state
-      console.log(token)
+      setAccessToken(token);
+      
       try {
         // Fetch bot details from the API
         const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${token}`,  // Use the access token from the state
+            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
         });
@@ -46,12 +48,12 @@ export default function BotDetailsPage() {
         }
 
         const jsonData = await response.json();
-        console.log("API Response is :", jsonData); // Debugging
+        console.log("API Response is:", jsonData);
 
         // Set the bot details if available
         if (jsonData) {
           setBotDetails(jsonData);
-          setUpdatedBot({ name: jsonData.name, description: jsonData.description }); // Pre-fill the modal with current details
+          setUpdatedBot({ name: jsonData.name, description: jsonData.description });
         } else {
           setError("Bot not found.");
         }
@@ -66,78 +68,77 @@ export default function BotDetailsPage() {
     if (bot_id) {
       fetchBotDetails();
     }
-  }, [isAuthenticated, bot_id, router]); // Fetch bot details when bot_id changes
+  }, [isAuthenticated, bot_id, router]);
 
+  const handleOpenChat = () => {
+    // Navigate to chat with this bot
+    router.push(`/chat/${bot_id}`);
+  };
 
-  const handleUpdateBot = async () => {
-    if (!updatedBot.name || !updatedBot.description) {
-      setError("Please provide both name and description.");
-      return;
-    }
+  const handleSearchDialogue = () => {
+    // Navigate to dialogues search page
+    router.push(`/bot/${bot_id}/dialogues`);
+  };
 
-    if (!accessToken) {
-      setError("No access token available.");
-      return;
-    }
-
-    try {
-      // Update bot details via PUT request
-      const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,  // Use the access token from the state
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: updatedBot.name,
-          description: updatedBot.description,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to update chatbot: ${response.statusText}`);
-      }
-
-      const updatedBotDetails = await response.json();
-      console.log("Bot Updated:", updatedBotDetails);
-
-      // Update the UI with the newly updated bot details
-      setBotDetails(updatedBotDetails);
-      setUpdatedBot({ name: updatedBotDetails.name, description: updatedBotDetails.description }); // Reset modal inputs
-      setIsModalOpen(false);  // Close the modal
-    } catch (err) {
-      console.error("Error updating chatbot:", err);
-      setError("Failed to update chatbot.");
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type === 'application/pdf') {
+      setSelectedFile(file);
+      console.log('Selected file:', file);
+    } else {
+      alert('Please select a valid PDF file.');
+      setSelectedFile(null);
     }
   };
 
-  const handleDeleteBot = async () => {
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      alert('Please select a file to upload.');
+      return;
+    }
+
     if (!accessToken) {
       setError("No access token available.");
       return;
     }
 
     try {
-      // Delete the bot via DELETE request
-      const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
-        method: "DELETE",
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      // Upload PDF to the bot
+      const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}/upload`, {
+        method: "POST",
         headers: {
-          Authorization: `Bearer ${accessToken}`,  // Use the access token from the state
-          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          // Do not set Content-Type header when using FormData
         },
+        body: formData,
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to delete chatbot: ${response.statusText}`);
+        throw new Error(`Failed to upload file: ${response.statusText}`);
       }
 
-      console.log("Bot Deleted");
-
-      // Redirect back to the home page after deletion
-      router.push("/");
+      alert(`File ${selectedFile.name} uploaded successfully!`);
+      setSelectedFile(null);
+      
+      // Refresh bot details to include the new file
+      const refreshResponse = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (refreshResponse.ok) {
+        const refreshedData = await refreshResponse.json();
+        setBotDetails(refreshedData);
+      }
     } catch (err) {
-      console.error("Error deleting chatbot:", err);
-      setError("Failed to delete chatbot.");
+      console.error("Error uploading file:", err);
+      setError("Failed to upload file.");
     }
   };
 
@@ -151,67 +152,70 @@ export default function BotDetailsPage() {
         <p className="text-red-500">{error}</p>
       ) : botDetails ? (
         <>
-          <div className="w-full max-w-2xl">
-            <div className="border p-6 rounded-lg shadow-lg bg-white mb-6">
-              <h2 className="font-bold text-xl">{botDetails.name}</h2>
-              <p className="text-gray-700">{botDetails.description}</p>
-              <p>Date created: <strong>{botDetails.created_at}</strong></p>
-              <p>Last updated: <strong>{botDetails.updated_at}</strong></p>
+          {/* Bot details section */}
+          <div className="border p-6 rounded-lg shadow-lg bg-white text-lg mb-6 w-full max-w-md">
+            <h1 className="font-bold text-2xl">{botDetails.name}</h1>
+            <p className="text-gray-700">{botDetails.description}</p>
+            <p>Date created: <strong>{botDetails.created_at}</strong></p>
+            <p>Last updated: <strong>{botDetails.updated_at}</strong></p>
+
+            <div className="flex justify-center space-x-4 mt-6">
+              <button
+                onClick={handleOpenChat}
+                className="px-4 py-2 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
+              >
+                Chat
+              </button>
+              <button
+                onClick={handleSearchDialogue}
+                className="px-4 py-2 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
+              >
+                Search dialogue
+              </button>
             </div>
           </div>
 
-          <div className="flex justify-center space-x-4 mt-6">
-            <button
-              onClick={() => setIsModalOpen(true)}  // Open modal to edit bot details
-              className="px-4 py-2 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
+          {/* Sources section */}
+          {botDetails.sources && (
+            <div className="border p-4 rounded-lg bg-white w-full max-w-md mb-6">
+              <h2 className="font-bold text-xl">Sources</h2>
+              <ul className="list-disc list-inside">
+                {botDetails.sources.map((source, index) => (
+                  <li key={index} className="text-lg">{source}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* File upload section */}
+          <div className="flex flex-col items-center mt-6 w-full max-w-md">
+            <h2 className="font-bold text-xl mb-4">Upload New Source</h2>
+            <input 
+              type="file" 
+              accept="application/pdf" 
+              onChange={handleFileChange} 
+              className="hidden" 
+              ref={fileInputRef} 
+            />
+            <button 
+              onClick={() => fileInputRef.current.click()} 
+              className="px-4 py-2 bg-gray-300 text-lg rounded-lg shadow-md hover:bg-gray-400 mb-4"
             >
-              Edit
+              Choose File
             </button>
-            <button
-              onClick={handleDeleteBot}  // Delete bot
-              className="px-4 py-2 bg-red-600 text-white text-lg rounded-lg shadow-md hover:bg-red-700"
+            {selectedFile && (
+              <p className="text-lg text-gray-700 mb-4">Selected file: <strong>{selectedFile.name}</strong></p>
+            )}
+            <button 
+              onClick={handleFileUpload} 
+              className="px-4 py-2 bg-green-600 text-white text-lg rounded-lg shadow-md hover:bg-green-700"
             >
-              Delete
+              Upload PDF
             </button>
           </div>
         </>
       ) : (
         <p className="text-gray-600">Bot not found.</p>
-      )}
-
-      {/* Modal for editing bot details */}
-      {isModalOpen && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-90 transition-all duration-300 ease-in-out">
-          <div className="bg-white p-8 rounded-lg shadow-xl w-96 relative">
-            <button
-              onClick={() => setIsModalOpen(false)}  // Close modal
-              className="absolute top-3 right-3 text-2xl"
-            >
-              &times;
-            </button>
-            <h2 className="text-2xl font-semibold mb-4 text-center">Edit Bot</h2>
-            <input
-              type="text"
-              placeholder="Name"
-              value={updatedBot.name}
-              onChange={(e) => setUpdatedBot({ ...updatedBot, name: e.target.value })}
-              className="w-full border p-3 mb-4 text-lg rounded-md"
-            />
-            <input
-              type="text"
-              placeholder="Description"
-              value={updatedBot.description}
-              onChange={(e) => setUpdatedBot({ ...updatedBot, description: e.target.value })}
-              className="w-full border p-3 mb-4 text-lg rounded-md"
-            />
-            <button
-              onClick={handleUpdateBot}  // Update bot details
-              className="w-full px-4 py-3 bg-green-600 text-white text-lg rounded-lg shadow-md hover:bg-green-700"
-            >
-              Save Changes
-            </button>
-          </div>
-        </div>
       )}
     </div>
   );
