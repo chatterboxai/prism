@@ -1,17 +1,18 @@
 // components/Navbar.tsx
+
 "use client";
 
 import { useRouter } from "next/navigation";
-import { signOut } from 'aws-amplify/auth';
+import { useAuth } from '../context/authcontext';  // Adjust the path based on your file structure
 
 export default function Navbar() {
   const router = useRouter();
+  const { logout } = useAuth();  // Use the logout function from AuthContext
 
   const handleLogout = async () => {
     try {
-      await signOut();
+      await logout();  // This will handle logout and redirection
       console.log("User logged out");
-      router.push("/login"); // Redirect to the login page after logout
     } catch (error) {
       console.error("Error logging out:", error);
     }

@@ -1,135 +1,222 @@
-"use client"
+'use client';
 
-import { useParams } from "next/navigation"
-import { useState, useEffect } from "react"
-import { FileIcon } from "lucide-react"
-import Link from 'next/link';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../../context/authcontext';
+import { useParams } from 'next/navigation';
 
-// Mock data - replace with actual API call
-const mockBots: Record<string, {
-    name: string
-    description: string
-    dateCreated: string
-    lastUpdated: string
-    isPublic: boolean
-    pdfSources: string[]
-  }> = {
-    bot1: {
-      name: "Bot1",
-      description: "This is a smart assistant for answering questions",
-      dateCreated: "2023-10-15",
-      lastUpdated: "2023-11-20",
-      isPublic: true,
-      pdfSources: ["Research Paper.pdf", "User Manual.pdf", "Technical Documentation.pdf"],
-    },
-    bot2: {
-      name: "Bot2",
-      description: "A specialized bot for data analysis",
-      dateCreated: "2023-09-05",
-      lastUpdated: "2023-11-18",
-      isPublic: false,
-      pdfSources: ["Data Dictionary.pdf", "Analysis Guidelines.pdf"],
-    },
-  }
-  
+export default function BotDetailsPage() {
+  const params = useParams();
+  const bot_id = params.botId;
+  const { isAuthenticated, checkSession } = useAuth();
+  const [botDetails, setBotDetails] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [updatedBot, setUpdatedBot] = useState({ name: "", description: "" });
+  const [accessToken, setAccessToken] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
 
-export default function BotPage() {
-  const params = useParams()
-  const botId = params.botId as string
-  const [bot, setBot] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const router = useRouter();
 
   useEffect(() => {
-    // Simulate API fetch
-    const fetchBot = () => {
-      setLoading(true)
-      // In a real app, replace with actual API call
-      setTimeout(() => {
-        setBot(mockBots[botId] || null)
-        setLoading(false)
-      }, 500)
+    const fetchBotDetails = async () => {
+      // Ensure user is authenticated before fetching bot details
+      const token = await checkSession();
+  
+      if (!token) {
+        setError("User not authenticated.");
+        router.push("/login");
+        return;
+      }
+
+      setAccessToken(token);
+      
+      try {
+        // Fetch bot details from the API
+        const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch bot details: ${response.statusText}`);
+        }
+
+        const jsonData = await response.json();
+        console.log("API Response is:", jsonData);
+
+        // Set the bot details if available
+        if (jsonData) {
+          setBotDetails(jsonData);
+          setUpdatedBot({ name: jsonData.name, description: jsonData.description });
+        } else {
+          setError("Bot not found.");
+        }
+      } catch (err) {
+        console.error("Error fetching bot details:", err);
+        setError("Failed to load bot details.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (bot_id) {
+      fetchBotDetails();
+    }
+  }, [isAuthenticated, bot_id, router]);
+
+  const handleOpenChat = () => {
+    // Navigate to chat with this bot
+    router.push(`/chat/${bot_id}`);
+  };
+
+  const handleSearchDialogue = () => {
+    // Navigate to dialogues search page
+    router.push(`/bot/${bot_id}/dialogues`);
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type === 'application/pdf') {
+      setSelectedFile(file);
+      console.log('Selected file:', file);
+    } else {
+      alert('Please select a valid PDF file.');
+      setSelectedFile(null);
+    }
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      alert('Please select a file to upload.');
+      return;
     }
 
-    fetchBot()
-  }, [botId])
+    if (!accessToken) {
+      setError("No access token available.");
+      return;
+    }
 
-  if (loading) {
-    return (
-      <div className="p-10 min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
-      </div>
-    )
-  }
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
 
-  if (!bot) {
-    return (
-      <div className="p-10 min-h-screen flex items-center justify-center">
-        <div className="text-xl">Bot not found</div>
-      </div>
-    )
-  }
+      // Upload PDF to the bot
+      const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          // Do not set Content-Type header when using FormData
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to upload file: ${response.statusText}`);
+      }
+
+      alert(`File ${selectedFile.name} uploaded successfully!`);
+      setSelectedFile(null);
+      
+      // Refresh bot details to include the new file
+      const refreshResponse = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (refreshResponse.ok) {
+        const refreshedData = await refreshResponse.json();
+        setBotDetails(refreshedData);
+      }
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      setError("Failed to upload file.");
+    }
+  };
 
   return (
-    <div className="p-10 bg-gray-100 min-h-screen">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* Top Section - Bot Details */}
-        <div className="bg-white p-6 rounded-lg shadow-lg">
-          <div className="flex justify-between items-start">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold">{bot.name}</h1>
-              <p className="text-gray-700">{bot.description}</p>
-              <div className="text-sm text-gray-500 space-y-1">
-                <p>Date Created: {bot.dateCreated}</p>
-                <p>Last Updated: {bot.lastUpdated}</p>
-                <div className="flex items-center mt-2">
-                    <span className="mr-2">Public:</span>
-                    <button
-                        onClick={() => setBot({ ...bot, isPublic: !bot.isPublic })}
-                        className={`w-10 h-5 rounded-full flex items-center transition-colors duration-200 ${bot.isPublic ? "bg-green-500" : "bg-gray-300"}`}
-                    >
-                        <div
-                        className={`w-4 h-4 rounded-full bg-white shadow-md transform transition-transform duration-200 ${bot.isPublic ? "translate-x-5" : "translate-x-1"}`}
-                        ></div>
-                    </button>
-                    </div>
-              </div>
-            </div>
-            <div className="flex space-x-3">
-              <Link href={`/chat/${botId}/default`}>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    Chat
-                </button>
-              </Link>
-              <Link href={`/bot/${botId}/dialogues`}>
-                <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                    Search dialogue
-                </button>
-              </Link>
+    <div className="p-10 bg-gray-100 min-h-screen flex flex-col items-center">
+      <h1 className="text-3xl font-bold mb-6">Bot Details</h1>
+
+      {loading ? (
+        <p className="text-lg text-gray-600">Loading bot details...</p>
+      ) : error ? (
+        <p className="text-red-500">{error}</p>
+      ) : botDetails ? (
+        <>
+          {/* Bot details section */}
+          <div className="border p-6 rounded-lg shadow-lg bg-white text-lg mb-6 w-full max-w-md">
+            <h1 className="font-bold text-2xl">{botDetails.name}</h1>
+            <p className="text-gray-700">{botDetails.description}</p>
+            <p>Date created: <strong>{botDetails.created_at}</strong></p>
+            <p>Last updated: <strong>{botDetails.updated_at}</strong></p>
+
+            <div className="flex justify-center space-x-4 mt-6">
+              <button
+                onClick={handleOpenChat}
+                className="px-4 py-2 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
+              >
+                Chat
+              </button>
+              <button
+                onClick={handleSearchDialogue}
+                className="px-4 py-2 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
+              >
+                Search dialogue
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* Middle Section - PDF Sources */}
-        <div className="bg-white p-6 rounded-lg shadow-lg">
-          <h2 className="text-lg font-semibold mb-4">Sources (Not clickable, just display)</h2>
-          <div className="flex flex-wrap gap-3">
-            {bot.pdfSources.map((pdf: string, index: number) => (
-              <div key={index} className="flex items-center px-4 py-2 bg-gray-100 rounded-lg border border-gray-200">
-                <FileIcon className="w-4 h-4 mr-2 text-gray-500" />
-                <span>{pdf}</span>
-              </div>
-            ))}
+          {/* Sources section */}
+          {botDetails.sources && (
+            <div className="border p-4 rounded-lg bg-white w-full max-w-md mb-6">
+              <h2 className="font-bold text-xl">Sources</h2>
+              <ul className="list-disc list-inside">
+                {botDetails.sources.map((source, index) => (
+                  <li key={index} className="text-lg">{source}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* File upload section */}
+          <div className="flex flex-col items-center mt-6 w-full max-w-md">
+            <h2 className="font-bold text-xl mb-4">Upload New Source</h2>
+            <input 
+              type="file" 
+              accept="application/pdf" 
+              onChange={handleFileChange} 
+              className="hidden" 
+              ref={fileInputRef} 
+            />
+            <button 
+              onClick={() => fileInputRef.current.click()} 
+              className="px-4 py-2 bg-gray-300 text-lg rounded-lg shadow-md hover:bg-gray-400 mb-4"
+            >
+              Choose File
+            </button>
+            {selectedFile && (
+              <p className="text-lg text-gray-700 mb-4">Selected file: <strong>{selectedFile.name}</strong></p>
+            )}
+            <button 
+              onClick={handleFileUpload} 
+              className="px-4 py-2 bg-green-600 text-white text-lg rounded-lg shadow-md hover:bg-green-700"
+            >
+              Upload PDF
+            </button>
           </div>
-        </div>
-
-        {/* Bottom Section - Browse File Button */}
-        <div className="flex justify-center mt-8">
-          <button className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors">
-            Browse file
-          </button>
-        </div>
-      </div>
+        </>
+      ) : (
+        <p className="text-gray-600">Bot not found.</p>
+      )}
     </div>
-  )
+  );
 }
-

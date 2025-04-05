@@ -1,15 +1,31 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { signIn } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
+import { useAuth } from "../context/authcontext"; // Import the useAuth hook
 
-export default function Login() {
+export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  const { setIsAuthenticated, checkSession } = useAuth(); // Use checkSession from AuthContext
+
+  useEffect(() => {
+    // Check authentication status as soon as the component is mounted
+    const checkAuthStatus = async () => {
+      const isAuthenticated = await checkSession(); // Call checkSession from context
+      if (isAuthenticated) {
+        console.log("User is already authenticated");
+        router.push("/home"); // Redirect to home if the user is already authenticated
+      }
+    };
+
+    checkAuthStatus(); // Run checkAuthStatus on mount
+  }, [router, checkSession]); // Depend on checkSession and router
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -17,47 +33,43 @@ export default function Login() {
     setLoading(true);
 
     if (!email || !password) {
-      setError("Please fill all fields");
+      setError("Please fill in all fields.");
       setLoading(false);
       return;
     }
 
     try {
-      // Connect to Cognito for sign in
-      const { isSignedIn, nextStep } = await signIn({
-        username: email,
-        password,
-      });
-
-      console.log("Sign in result:", { isSignedIn, nextStep });
+      const { isSignedIn, nextStep } = await signIn({ username: email, password });
 
       if (isSignedIn) {
-        // Redirect to home page or dashboard after successful login
+        setIsAuthenticated(true); // Set authentication state
         router.push("/home");
-      } else if (
-        nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_SMS_CODE" ||
-        nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_TOTP_CODE"
-      ) {
-        // Handle MFA if needed
-        setError(
-          "MFA confirmation required. This demo doesn't handle MFA yet."
-        );
-      } else if (
-        nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED"
-      ) {
-        // Handle password reset
-        router.push("/reset-password");
-      } else if (nextStep.signInStep === "CONFIRM_SIGN_UP") {
-        // User needs to confirm registration
-        setError("Please verify your email before signing in.");
+      } else {
+        handleNextSteps(nextStep);
       }
     } catch (err) {
-      console.error("Error signing in:", err);
-      setError(
-        err instanceof Error ? err.message : "An error occurred during sign in"
-      );
+      console.error("Sign-in error:", err);
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNextSteps = (nextStep: any) => {
+    if (!nextStep) return;
+    switch (nextStep.signInStep) {
+      case "CONFIRM_SIGN_IN_WITH_SMS_CODE":
+      case "CONFIRM_SIGN_IN_WITH_TOTP_CODE":
+        setError("MFA required. This demo does not support MFA.");
+        break;
+      case "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED":
+        router.push("/reset-password");
+        break;
+      case "CONFIRM_SIGN_UP":
+        setError("Please verify your email before signing in.");
+        break;
+      default:
+        setError("Unexpected authentication step required.");
     }
   };
 
@@ -66,15 +78,11 @@ export default function Login() {
       <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
         <h1 className="mb-6 text-center text-2xl font-bold">Login</h1>
 
-        {error && (
-          <p className="mb-4 rounded bg-red-100 p-2 text-red-600">{error}</p>
-        )}
+        {error && <p className="mb-4 rounded bg-red-100 p-2 text-red-600">{error}</p>}
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="email" className="mb-2 block font-medium">
-              Email
-            </label>
+            <label htmlFor="email" className="mb-2 block font-medium">Email</label>
             <input
               id="email"
               type="email"
@@ -87,9 +95,7 @@ export default function Login() {
           </div>
 
           <div className="mb-6">
-            <label htmlFor="password" className="mb-2 block font-medium">
-              Password
-            </label>
+            <label htmlFor="password" className="mb-2 block font-medium">Password</label>
             <input
               id="password"
               type="password"
