@@ -1,152 +1,95 @@
+// pages/login.tsx
+
 "use client";
 
-import { useState, FormEvent } from "react";
-import { signIn, fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { CognitoUserPool, CognitoUser, AuthenticationDetails } from 'amazon-cognito-identity-js';
+import { useState, FormEvent, useEffect } from 'react';
+import { signIn } from 'aws-amplify/auth';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../context/authcontext';
+import { fetchAuthSession } from 'aws-amplify/auth';
 
-export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  
-  // Function to check session when user navigates to /login
 
-  const checkAuthenticatedUser = async () => {
-    try {
-      const session = await fetchAuthSession(); // Check if the user has an active session
-      //console.log(session.tokens.idToken & session.tokens.accessToken)
-      console.log(session.tokens.accessToken)
-      if (session.tokens.accessToken) {
-        router.push("/home"); // Redirect to /home if the user is already signed in
-      }
-    } catch (error) {
-      console.log("No authenticated session found, continuing to login");
-    }
-  };
+  const { isAuthenticated, setIsAuthenticated } = useAuth();
+ 
 
   useEffect(() => {
-    // Run session check only when the component is mounted
-    checkAuthenticatedUser();
-  }, []); // Empty dependency array ensures the check runs only once
-
+    // Check authentication status as soon as the component is mounted
+    const checkAuthStatus = async () => {
+      try {
+        // Check if the user is authenticated (this may depend on your auth provider, e.g., AWS Cognito)
+        const session = await fetchAuthSession(); // This is just an example. Modify as per your auth flow.
+        const accessToken = session.tokens?.accessToken;
+  
+        if (accessToken) {
+          console.log("User is authenticated");
+          // You could redirect to the home page here
+          router.push('/home'); // Redirect to home if user is authenticated
+        } else {
+          console.log("User is not authenticated");
+          // Optionally handle unauthenticated case (e.g., show login page)
+          router.push('/login'); // Redirect to login if user is not authenticated
+        }
+      } catch (error) {
+        console.error("Error checking authentication status:", error);
+        // Handle error, maybe redirect to login or show an error message
+        router.push('/login');
+      }
+    };
+  
+    // Call the checkAuthStatus function when the component mounts
+    checkAuthStatus();
+  }, [router]); // The empty array ensures this only runs on mount
+  
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError("");
+    setError('');
     setLoading(true);
 
     if (!email || !password) {
-      setError("Please fill all fields");
+      setError('Please fill in all fields.');
       setLoading(false);
       return;
     }
 
     try {
-      // Connect to Cognito for sign in
-      const { isSignedIn, nextStep } = await signIn({
-        username: email,
-        password,
-      });
-
-      console.log("Sign in result:", { isSignedIn, nextStep });
+      const { isSignedIn, nextStep } = await signIn({ username: email, password });
 
       if (isSignedIn) {
-        // Redirect to home page or dashboard after successful login
-        const { username, userId, signInDetails } = await getCurrentUser();
-        console.log("username", username);
-        console.log("userId", userId);
-        console.log("password", password);
-        console.log("sign-in details", signInDetails);
-    
-        // Access environment variables (Bun supports this syntax)
-        const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
-        console.log("COGNITO_CLIENT_ID:", cognitoClientId);
-        console.log("COGNITO_USER_POOL_ID:", process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID);
-        const region = 'ap-southeast-1';
-        // Initiate Cognito auth before redirecting
-        try {
-          const response = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-amz-json-1.1',
-                    'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth'
-                },
-                body: JSON.stringify({
-                    AuthFlow: 'USER_PASSWORD_AUTH',
-                    ClientId: cognitoClientId,
-                    AuthParameters: {
-                        USERNAME: username,
-                        PASSWORD: password
-                    }
-                })
-            });
-            
-            const authResult = await response.json();
-            const accessToken = authResult.AuthenticationResult?.AccessToken;
-            console.log("Access Token:", accessToken);
-            
-            if (accessToken) {
-              try {
-                  const profileResponse = await fetch('http://127.0.0.1:8000/api/v1/users/profile', {
-                      method: 'GET',
-                      headers: {
-                          'Authorization': `Bearer ${accessToken}`,
-                          'Content-Type': 'application/json'
-                      }
-                  });
-                  
-                  if (profileResponse.ok) {
-                      const profileData = await profileResponse.json();
-                      console.log("User Profile Data:", profileData);
-                      
-                      // You might want to store this profile data in state/context
-                      // For example:
-                      // setUserProfile(profileData);
-                      // or
-                      // localStorage.setItem('userProfile', JSON.stringify(profileData));
-                      
-                      // Now redirect to home page
-                      router.push("/home");
-                  } else {
-                      console.error("Error fetching profile:", profileResponse.status, await profileResponse.text());
-                  }
-              } catch (profileError) {
-                  console.error("Profile fetch error:", profileError);
-              }
-          } else {
-              console.error("No access token received");
-          }
-        } catch (error) {
-            console.error("Authentication error:", error);
-        }
-    } else if (
-        nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_SMS_CODE" ||
-        nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_TOTP_CODE"
-      ) {
-        // Handle MFA if needed
-        setError(
-          "MFA confirmation required. This demo doesn't ha  ndle MFA yet."
-        );
-      } else if (
-        nextStep.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED"
-      ) {
-        // Handle password reset
-        router.push("/reset-password");
-      } else if (nextStep.signInStep === "CONFIRM_SIGN_UP") {
-        // User needs to confirm registration
-        setError("Please verify your email before signing in.");
+        setIsAuthenticated(true); // Set authentication state
+        router.push('/home');
+      } else {
+        handleNextSteps(nextStep);
       }
     } catch (err) {
-      console.error("Error signing in:", err);
-      setError(
-        err instanceof Error ? err.message : "An error occurred during sign in"
-      );
+      console.error('Sign-in error:', err);
+      setError(err instanceof Error ? err.message : 'Sign-in failed.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleNextSteps = (nextStep: any) => {
+    if (!nextStep) return;
+    switch (nextStep.signInStep) {
+      case 'CONFIRM_SIGN_IN_WITH_SMS_CODE':
+      case 'CONFIRM_SIGN_IN_WITH_TOTP_CODE':
+        setError('MFA required. This demo does not support MFA.');
+        break;
+      case 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED':
+        router.push('/reset-password');
+        break;
+      case 'CONFIRM_SIGN_UP':
+        setError('Please verify your email before signing in.');
+        break;
+      default:
+        setError('Unexpected authentication step required.');
     }
   };
 
@@ -155,15 +98,11 @@ export default function Login() {
       <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md">
         <h1 className="mb-6 text-center text-2xl font-bold">Login</h1>
 
-        {error && (
-          <p className="mb-4 rounded bg-red-100 p-2 text-red-600">{error}</p>
-        )}
+        {error && <p className="mb-4 rounded bg-red-100 p-2 text-red-600">{error}</p>}
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="email" className="mb-2 block font-medium">
-              Email
-            </label>
+            <label htmlFor="email" className="mb-2 block font-medium">Email</label>
             <input
               id="email"
               type="email"
@@ -176,9 +115,7 @@ export default function Login() {
           </div>
 
           <div className="mb-6">
-            <label htmlFor="password" className="mb-2 block font-medium">
-              Password
-            </label>
+            <label htmlFor="password" className="mb-2 block font-medium">Password</label>
             <input
               id="password"
               type="password"
