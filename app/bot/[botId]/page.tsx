@@ -18,6 +18,10 @@ export default function BotDetailsPage() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileName, setFileName] = useState('');
   const fileInputRef = useRef(null);
+  // State to store documents
+  const [documents, setDocuments] = useState([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [documentsError, setDocumentsError] = useState("");
 
   const router = useRouter();
 
@@ -55,6 +59,9 @@ export default function BotDetailsPage() {
         if (jsonData) {
           setBotDetails(jsonData);
           setUpdatedBot({ name: jsonData.name, description: jsonData.description });
+          
+          // After getting bot details, fetch its documents
+          fetchBotDocuments(token);
         } else {
           setError("Bot not found.");
         }
@@ -70,6 +77,42 @@ export default function BotDetailsPage() {
       fetchBotDetails();
     }
   }, [isAuthenticated, bot_id, router]);
+
+  // Function to fetch bot documents
+  const fetchBotDocuments = async (token) => {
+    setLoadingDocuments(true);
+    setDocumentsError("");
+    
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/v1/documents/${bot_id}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch documents: ${response.statusText}`);
+      }
+
+      const responseData = await response.json();
+      console.log("Documents API Response:", responseData);
+      
+      // Check if the documents are nested in a 'documents' field
+      if (responseData.documents) {
+        setDocuments(responseData.documents);
+      } else {
+        // Fallback in case the format changes
+        setDocuments(Array.isArray(responseData) ? responseData : []);
+      }
+    } catch (err) {
+      console.error("Error fetching documents:", err);
+      setDocumentsError("Failed to load documents.");
+    } finally {
+      setLoadingDocuments(false);
+    }
+  };
 
   const handleOpenChat = () => {
     // Navigate to chat with this bot
@@ -159,6 +202,9 @@ export default function BotDetailsPage() {
       if (refreshResponse.ok) {
         const refreshedData = await refreshResponse.json();
         setBotDetails(refreshedData);
+        
+        // Also refresh the documents list
+        fetchBotDocuments(accessToken);
       }
     } catch (err) {
       console.error("Error uploading file:", err);
@@ -214,6 +260,9 @@ export default function BotDetailsPage() {
       if (refreshResponse.ok) {
         const refreshedData = await refreshResponse.json();
         setBotDetails(refreshedData);
+        
+        // Also refresh the documents list
+        fetchBotDocuments(accessToken);
       }
     } catch (err) {
       console.error("Error with direct upload:", err);
@@ -265,6 +314,40 @@ export default function BotDetailsPage() {
               </ul>
             </div>
           )}
+          
+          {/* Documents section */}
+          <div className="border p-4 rounded-lg bg-white w-full max-w-md mb-6">
+            <h2 className="font-bold text-xl mb-4">Bot Documents</h2>
+            
+            {loadingDocuments ? (
+              <p className="text-gray-600">Loading documents...</p>
+            ) : documentsError ? (
+              <p className="text-red-500">{documentsError}</p>
+            ) : documents && documents.length > 0 ? (
+              <ul className="divide-y divide-gray-200">
+                {documents.map((doc, index) => (
+                  <li key={index} className="py-4">
+                    <div className="flex flex-col space-y-2">
+                      <h3 className="font-semibold text-lg">{doc.title}</h3>
+                      <p className="text-sm text-gray-500">File: {doc.file_url}</p>
+                      <div className="flex space-x-2">
+                        {/* <a 
+                          href={`http://127.0.0.1:8000/api/v1/documents/download/${doc.id}`}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline text-sm"
+                        >
+                          Download
+                        </a> */}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-600">No documents found for this bot.</p>
+            )}
+          </div>
 
           {/* File upload section */}
           <div className="flex flex-col items-center mt-6 w-full max-w-md">
@@ -310,8 +393,6 @@ export default function BotDetailsPage() {
               >
                 Upload to Documents
               </button>
-              
-              
             </div>
 
             {error && <p className="text-red-500 mt-4">{error}</p>}
