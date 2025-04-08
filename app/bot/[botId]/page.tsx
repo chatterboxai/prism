@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/authcontext';
 import { useParams } from 'next/navigation';
+// import { threadId } from 'worker_threads';
+import { v4 as uuidv4 } from "uuid"
+
 
 export default function BotDetailsPage() {
   const params = useParams();
@@ -115,8 +118,9 @@ export default function BotDetailsPage() {
   };
 
   const handleOpenChat = () => {
+    const threadId = uuidv4()
     // Navigate to chat with this bot
-    router.push(`/chat/${bot_id}`);
+    router.push(`/chat/${bot_id}/${threadId}`);
   };
 
   const handleSearchDialogue = () => {
