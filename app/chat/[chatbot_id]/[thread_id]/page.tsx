@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useRef, useEffect, type FormEvent } from "react"
-import { useParams } from "next/navigation"
+import { useState, useRef, useEffect, FormEvent } from "react"
+import { useParams, useRouter } from "next/navigation"
 import { Send } from "lucide-react"
+import { useAuth } from '../../../context/authcontext';
 
 interface Message {
   role: "user" | "bot"
@@ -13,83 +14,115 @@ export default function ChatPage() {
   const params = useParams()
   const chatbotId = params.chatbot_id as string
   const threadId = params.thread_id as string
+  const router = useRouter();
+
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [currentBotMessage, setCurrentBotMessage] = useState("")
+  const [error, setError] = useState("");
+
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Scroll to bottom on new message
+  const { checkSession } = useAuth();
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchToken = async () => {
+      const token = await checkSession();
+  
+      if (!token) {
+        setError("User not authenticated.");
+        router.push("/login");
+        return;
+      }
+  
+      setAccessToken(token);
+    };
+  
+    fetchToken();
+  }, []);
+  
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  }, [messages, currentBotMessage])
 
-  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
 
-  const generateBotResponse = (userMessage: string): string => {
-    const lower = userMessage.toLowerCase()
-    if (lower.includes("where"))
-      return "Singapore Management University is located at 81 Victoria St, Singapore 188065"
-    if (lower.includes("class participation") || lower.includes("smu"))
-      return "Yes, SMU makes class participation a mandatory requirement in each module, but the weightage differs for each class."
-    return "Let me get back to you on that!"
-  }
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!input.trim()) return
-  
-    const userMessage: Message = {
-      role: "user",
-      content: input.trim(),
+
+    const token = await checkSession()
+    if (!token) {
+      setError("User not authenticated.")
+      router.push("/login")
+      return
     }
-  
+
+    const userMessage: Message = { role: "user", content: input.trim() }
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
-  
+    setCurrentBotMessage("")
+
     try {
-      const response = await fetch("http://localhost:8000/chat", {
+      const response = await fetch("http://localhost:8000/api/v1/chatbots/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: userMessage.content }),
+        body: JSON.stringify({ chatbot_id: chatbotId, message: userMessage.content }),
       })
-  
+
       if (response.status === 429) {
         setMessages((prev) => [
           ...prev,
-          {
-            role: "bot",
-            content: "You're sending messages too quickly. Please wait a moment.",
-          },
+          { role: "bot", content: "Limit has been reached. Please wait for awhile." },
         ])
-      } else if (!response.ok) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "bot", content: "Something went wrong. Please try again later." },
-        ])
-      } else {
-        const data = await response.json()
-        setMessages((prev) => [
-          ...prev,
-          { role: "bot", content: data.message || "Reply from bot." },
-        ])
+        setIsLoading(false)
+        return
       }
-    } catch (error) {
+
+      if (!response.ok || !response.body) throw new Error("Streaming failed.")
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder("utf-8")
+      let partial = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split("\n")
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            partial = line.replace("data: ", "").trim()
+            setCurrentBotMessage(partial)
+          }
+        }
+      }
+
+      setMessages((prev) => [...prev, { role: "bot", content: partial }])
+      setCurrentBotMessage("")
+    } catch (err) {
+      console.error("Streaming error:", err)
       setMessages((prev) => [
         ...prev,
-        { role: "bot", content: "Network error. Please try again later." },
+        { role: "bot", content: "Something went wrong." },
       ])
+    } finally {
+      setIsLoading(false)
     }
-  
-    setIsLoading(false)
   }
   
 
@@ -140,20 +173,10 @@ export default function ChatPage() {
                 </div>
               ))}
 
-              {isLoading && (
+              {currentBotMessage && (
                 <div className="flex justify-start">
-                  <div className="bg-white p-3 rounded-lg shadow-sm rounded-bl-none">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" />
-                      <div
-                        className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
-                        style={{ animationDelay: "150ms" }}
-                      />
-                      <div
-                        className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
-                        style={{ animationDelay: "300ms" }}
-                      />
-                    </div>
+                  <div className="bg-white p-4 rounded-lg shadow-sm rounded-bl-none text-gray-800 max-w-[80%]">
+                    {currentBotMessage}
                   </div>
                 </div>
               )}
@@ -167,6 +190,7 @@ export default function ChatPage() {
             <div className="max-w-2xl mx-auto">
               <form onSubmit={handleSubmit} className="relative">
                 <input
+                  ref={inputRef}
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
