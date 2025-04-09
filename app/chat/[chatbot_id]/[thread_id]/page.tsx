@@ -16,40 +16,37 @@ export default function ChatPage() {
   const threadId = params.thread_id as string
   const router = useRouter();
 
-
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [currentBotMessage, setCurrentBotMessage] = useState("")
-  const [error, setError] = useState("");
-
+  const [error, setError] = useState("")
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const { checkSession } = useAuth();
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchToken = async () => {
-      const token = await checkSession();
-  
+      const token = await checkSession()
+
       if (!token) {
-        setError("User not authenticated.");
-        router.push("/login");
-        return;
+        setError("User not authenticated.")
+        router.push("/login")
+        return
       }
-  
-      setAccessToken(token);
-    };
-  
-    fetchToken();
-  }, []);
-  
+
+      setAccessToken(token)
+    }
+
+    fetchToken()
+  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, currentBotMessage])
+  }, [messages])
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -70,16 +67,15 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
-    setCurrentBotMessage("")
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/chatbots/chat", {
+      const response = await fetch("http://localhost:8000/api/v1/chatbots/public/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          
         },
-        body: JSON.stringify({ chatbot_id: chatbotId, message: userMessage.content }),
+        body: JSON.stringify({ chatbot_id: chatbotId, thread_id: threadId, message: userMessage.content }),
       })
 
       if (response.status === 429) {
@@ -95,8 +91,12 @@ export default function ChatPage() {
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder("utf-8")
-      let partial = ""
 
+      let fullBotMessage = ""; // Store the current bot message
+      let currentWordIndex = 0; // Index to track the current word being revealed
+      let botMessageWords = []; // Array of words in the message to reveal one by one
+
+      // Read the response stream
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -106,14 +106,36 @@ export default function ChatPage() {
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
-            partial = line.replace("data: ", "").trim()
-            setCurrentBotMessage(partial)
+            const messageData = line.replace("data: ", "").trim()
+            try {
+              const parsedMessage = JSON.parse(messageData)
+              const botMessage = parsedMessage.message // Extract the complete message from the response
+
+              // Split the bot message into words for word-by-word animation
+              botMessageWords = botMessage.split(" ")
+
+              // Reveal the message word by word
+              setInterval(() => {
+                if (currentWordIndex < botMessageWords.length) {
+                  fullBotMessage += " " + botMessageWords[currentWordIndex]
+                  setCurrentBotMessage(fullBotMessage)
+                  currentWordIndex++
+                }
+              }, 100) // Adjust speed of word reveal (100ms)
+
+            } catch (error) {
+              console.error("Error parsing message:", error)
+            }
           }
         }
       }
 
-      setMessages((prev) => [...prev, { role: "bot", content: partial }])
-      setCurrentBotMessage("")
+      // Once streaming is complete, add the full bot message to the conversation
+      setMessages((prev) => [...prev, { role: "bot", content: fullBotMessage }])
+
+      // Reset currentBotMessage after the message is added to state
+      setTimeout(() => setCurrentBotMessage(""), 0) // Reset it after the message is added
+
     } catch (err) {
       console.error("Streaming error:", err)
       setMessages((prev) => [
@@ -124,7 +146,6 @@ export default function ChatPage() {
       setIsLoading(false)
     }
   }
-  
 
   return (
     <div className="flex flex-col h-screen bg-white">
