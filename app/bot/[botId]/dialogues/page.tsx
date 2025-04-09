@@ -15,14 +15,14 @@ interface Dialogue {
 const initialDialogues: Dialogue[] = [
   {
     id: uuidv4(),
-    questions: ['Where did Nolan graduate?', 'What was Nolan\'s university?'],
-    answer: 'Singapore Management University',
+    questions: [],
+    answer: '',
   },
-  {
-    id: uuidv4(),
-    questions: ['Where is SMU located?'],
-    answer: 'Singapore',
-  },
+  // {
+  //   id: uuidv4(),
+  //   questions: ['Where is SMU located?'],
+  //   answer: 'Singapore',
+  // },
 ];
 
 export default function DialoguesPage() {
@@ -103,7 +103,7 @@ export default function DialoguesPage() {
               <X size={20} />
             </button>
 
-            <div className="flex flex-wrap gap-2 mb-2">
+            <div className={`flex flex-wrap gap-2 mb-2 ${dialogue.questions.length === 0 ? 'mt-6' : ''}`}>
               {dialogue.questions.map((q, index) => (
                 <span key={index} className="bg-gray-200 px-3 py-1 rounded-full flex items-center text-sm">
                   {q}
