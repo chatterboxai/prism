@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, Suspense } from "react";
 import { confirmSignUp } from "aws-amplify/auth";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function Verify() {
+function VerifyForm() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -111,5 +111,19 @@ export default function Verify() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Verify() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-gray-100">
+          Loading...
+        </div>
+      }
+    >
+      <VerifyForm />
+    </Suspense>
   );
 }

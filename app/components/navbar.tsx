@@ -4,17 +4,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../context/authcontext";
 import { Menu, X, LogOut } from "lucide-react";
+import { signOut } from "aws-amplify/auth";
 
 export default function Navbar() {
   const router = useRouter();
-  const { logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
-      await logout();
+      await signOut();
       console.log("User logged out");
     } catch (error) {
       console.error("Error logging out:", error);
