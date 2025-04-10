@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { signUp } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/app/context/authcontext";
 
 export default function Signup() {
   const [email, setEmail] = useState("");
@@ -12,6 +13,15 @@ export default function Signup() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  const { accessToken } = useAuth();
+
+  useEffect(() => {
+    // Check authentication status as soon as the component is mounted
+    if (accessToken) {
+      router.push("/home");
+    }
+  }, [router, accessToken]);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();

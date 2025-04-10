@@ -1,70 +1,115 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '../../context/authcontext';
-import { useParams } from 'next/navigation';
-// import { threadId } from 'worker_threads';
-import { v4 as uuidv4 } from "uuid"
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/app/context/authcontext";
+import { useParams } from "next/navigation";
+import { v4 as uuidv4 } from "uuid";
 
+type ChatbotDocuments = {
+  documents: ChatbotDocument[];
+};
 
 export default function BotDetailsPage() {
   const params = useParams();
   const bot_id = params.botId;
-  const { isAuthenticated, checkSession } = useAuth();
-  const [botDetails, setBotDetails] = useState(null);
+
+  const [botDetails, setBotDetails] = useState<Chatbot>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [updatedBot, setUpdatedBot] = useState({ name: "", description: "" });
-  const [accessToken, setAccessToken] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [fileName, setFileName] = useState('');
-  const fileInputRef = useRef(null);
-  // State to store documents
-  const [documents, setDocuments] = useState([]);
-  const [loadingDocuments, setLoadingDocuments] = useState(false);
-  const [documentsError, setDocumentsError] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File>();
+  const [fileName, setFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // State to store documents
+  const [documents, setDocuments] = useState<ChatbotDocument[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+
+  const { accessToken } = useAuth();
   const router = useRouter();
+
+  // Function to fetch bot documents
+  const fetchBotDocuments = useCallback(async () => {
+    setLoadingDocuments(true);
+    setError("");
+
+    if (!accessToken) {
+      setError("No access token available.");
+      router.push("/login");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/documents/${bot_id}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: accessToken
+              ? `Bearer ${accessToken.toString()}`
+              : "",
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error("Failed to fetch documents:", response.statusText);
+        return;
+      }
+
+      const responseData: ChatbotDocuments = await response.json();
+      console.log("Documents API Response:", responseData);
+
+      // Check if the documents are nested in a 'documents' field
+      if (responseData) {
+        setDocuments(responseData.documents);
+      }
+    } catch (err) {
+      console.error("Error fetching documents:", err);
+      setError("Failed to load documents.");
+    } finally {
+      setLoadingDocuments(false);
+    }
+  }, [bot_id, accessToken, router]);
 
   useEffect(() => {
     const fetchBotDetails = async () => {
       // Ensure user is authenticated before fetching bot details
-      const token = await checkSession();
-  
-      if (!token) {
+      if (!accessToken) {
         setError("User not authenticated.");
         router.push("/login");
         return;
       }
 
-      setAccessToken(token);
-      
       try {
         // Fetch bot details from the API
-        const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/chatbots/${bot_id}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: accessToken
+                ? `Bearer ${accessToken.toString()}`
+                : "",
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch bot details: ${response.statusText}`);
+          console.error("Failed to fetch bot details:", response.statusText);
+          return;
         }
 
-        const jsonData = await response.json();
+        const jsonData: Chatbot = await response.json();
         console.log("API Response is:", jsonData);
 
         // Set the bot details if available
         if (jsonData) {
           setBotDetails(jsonData);
-          setUpdatedBot({ name: jsonData.name, description: jsonData.description });
-          
           // After getting bot details, fetch its documents
-          fetchBotDocuments(token);
+          fetchBotDocuments();
         } else {
           setError("Bot not found.");
         }
@@ -75,50 +120,14 @@ export default function BotDetailsPage() {
         setLoading(false);
       }
     };
-    
+
     if (bot_id) {
       fetchBotDetails();
     }
-  }, [isAuthenticated, bot_id, router]);
-
-  // Function to fetch bot documents
-  const fetchBotDocuments = async (token) => {
-    setLoadingDocuments(true);
-    setDocumentsError("");
-    
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/api/v1/documents/${bot_id}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch documents: ${response.statusText}`);
-      }
-
-      const responseData = await response.json();
-      console.log("Documents API Response:", responseData);
-      
-      // Check if the documents are nested in a 'documents' field
-      if (responseData.documents) {
-        setDocuments(responseData.documents);
-      } else {
-        // Fallback in case the format changes
-        setDocuments(Array.isArray(responseData) ? responseData : []);
-      }
-    } catch (err) {
-      console.error("Error fetching documents:", err);
-      setDocumentsError("Failed to load documents.");
-    } finally {
-      setLoadingDocuments(false);
-    }
-  };
+  }, [accessToken, bot_id, router, fetchBotDocuments]);
 
   const handleOpenChat = () => {
-    const threadId = uuidv4()
+    const threadId = uuidv4();
     // Navigate to chat with this bot
     router.push(`/chat/${bot_id}/${threadId}`);
   };
@@ -128,149 +137,108 @@ export default function BotDetailsPage() {
     router.push(`/bot/${bot_id}/dialogues`);
   };
 
-  const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    if (file && file.type === 'application/pdf') {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === "application/pdf") {
       setSelectedFile(file);
       // Set the default filename to the selected file's name, without the extension
       const nameWithoutExtension = file.name.replace(/\.[^/.]+$/, "");
       setFileName(nameWithoutExtension);
-      console.log('Selected file:', file);
+      console.log("Selected file:", file);
     } else {
-      alert('Please select a valid PDF file.');
-      setSelectedFile(null);
-      setFileName('');
+      alert("Please select a valid PDF file.");
+      setSelectedFile(undefined);
+      setFileName("");
     }
   };
 
   const handleFileUpload = async () => {
+    if (!accessToken) {
+      setError("No access token available.");
+      router.push("/login");
+      return;
+    }
+
     if (!selectedFile) {
-      alert('Please select a file to upload.');
+      alert("Please select a file to upload.");
       return;
     }
 
     if (!fileName.trim()) {
-      alert('Please enter a title for the file.');
+      alert("Please enter a title for the file.");
       return;
     }
 
-    if (!accessToken) {
-      setError("No access token available.");
+    if (!bot_id) {
+      setError("Bot ID not found.");
       return;
     }
 
     try {
       // Create FormData instance
       const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('title', fileName);
-      formData.append('chatbot_id', bot_id);
-      
-      console.log('Form data prepared:', {
+      formData.append("file", selectedFile);
+      formData.append("title", fileName);
+      formData.append("chatbot_id", bot_id.toString());
+
+      console.log("Form data prepared:", {
         file: selectedFile.name,
         title: fileName,
-        chatbot_id: bot_id
+        chatbot_id: bot_id,
       });
 
       // Upload PDF to the documents endpoint using FormData
-      const response = await fetch('http://127.0.0.1:8000/api/v1/documents', {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          // Don't set Content-Type when using FormData - the browser will set it with the correct boundary
-        },
-        body: formData,
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/documents`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: accessToken
+              ? `Bearer ${accessToken.toString()}`
+              : "",
+            // Don't set Content-Type when using FormData - the browser will set it
+          },
+          body: formData,
+        }
+      );
 
       // For debugging: log the raw response
       const rawResponse = await response.text();
-      console.log('Raw server response:', rawResponse);
-      
+      console.log("Raw server response:", rawResponse);
+
       if (!response.ok) {
-        throw new Error(`Failed to upload file: ${response.statusText}`);
+        console.error("Failed to upload file:", response.statusText);
+        return;
       }
 
       alert(`File "${fileName}" uploaded successfully!`);
-      setSelectedFile(null);
-      setFileName('');
-      
+      setSelectedFile(undefined);
+      setFileName("");
+
       // Refresh bot details to include the new file
-      const refreshResponse = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      
+      const refreshResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/chatbots/${bot_id}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: accessToken
+              ? `Bearer ${accessToken.toString()}`
+              : "",
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
       if (refreshResponse.ok) {
-        const refreshedData = await refreshResponse.json();
+        const refreshedData: Chatbot = await refreshResponse.json();
         setBotDetails(refreshedData);
-        
+
         // Also refresh the documents list
-        fetchBotDocuments(accessToken);
+        fetchBotDocuments();
       }
     } catch (err) {
       console.error("Error uploading file:", err);
-      setError(`Failed to upload file: ${err.message}`);
-    }
-  };
-
-  // Let's try a direct upload to the chatbot's upload endpoint as a fallback
-  const handleDirectUpload = async () => {
-    if (!selectedFile) {
-      alert('Please select a file to upload.');
-      return;
-    }
-
-    if (!accessToken) {
-      setError("No access token available.");
-      return;
-    }
-
-    try {
-      // Create FormData instance
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      
-      // Use the original chatbot upload endpoint
-      const response = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}/upload`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const rawResponse = await response.text();
-        console.error('Raw server response:', rawResponse);
-        throw new Error(`Failed to upload file: ${response.statusText}`);
-      }
-
-      alert(`File uploaded successfully using direct upload!`);
-      setSelectedFile(null);
-      setFileName('');
-      
-      // Refresh bot details
-      const refreshResponse = await fetch(`http://127.0.0.1:8000/api/v1/chatbots/${bot_id}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (refreshResponse.ok) {
-        const refreshedData = await refreshResponse.json();
-        setBotDetails(refreshedData);
-        
-        // Also refresh the documents list
-        fetchBotDocuments(accessToken);
-      }
-    } catch (err) {
-      console.error("Error with direct upload:", err);
-      setError(`Failed with direct upload: ${err.message}`);
+      setError("Failed to upload file");
     }
   };
 
@@ -288,8 +256,12 @@ export default function BotDetailsPage() {
           <div className="border p-6 rounded-lg shadow-lg bg-white text-lg mb-6 w-full max-w-md">
             <h1 className="font-bold text-2xl">{botDetails.name}</h1>
             <p className="text-gray-700">{botDetails.description}</p>
-            <p>Date created: <strong>{botDetails.created_at}</strong></p>
-            <p>Last updated: <strong>{botDetails.updated_at}</strong></p>
+            <p>
+              Date created: <strong>{botDetails.created_at}</strong>
+            </p>
+            <p>
+              Last updated: <strong>{botDetails.updated_at}</strong>
+            </p>
 
             <div className="flex justify-center space-x-4 mt-6">
               <button
@@ -302,41 +274,42 @@ export default function BotDetailsPage() {
                 onClick={handleSearchDialogue}
                 className="px-4 py-2 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
               >
-                Search dialogue
+                Dialogues
               </button>
             </div>
           </div>
 
-          {/* Sources section */}
-          {botDetails.sources && (
-            <div className="border p-4 rounded-lg bg-white w-full max-w-md mb-6">
-              <h2 className="font-bold text-xl">Sources</h2>
-              <ul className="list-disc list-inside">
-                {botDetails.sources.map((source, index) => (
-                  <li key={index} className="text-lg">{source}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          
           {/* Documents section */}
           <div className="border p-4 rounded-lg bg-white w-full max-w-md mb-6">
             <h2 className="font-bold text-xl mb-4">Bot Documents</h2>
-            
+
             {loadingDocuments ? (
               <p className="text-gray-600">Loading documents...</p>
-            ) : documentsError ? (
-              <p className="text-red-500">{documentsError}</p>
+            ) : error ? (
+              <p className="text-red-500">{error}</p>
             ) : documents && documents.length > 0 ? (
               <ul className="divide-y divide-gray-200">
                 {documents.map((doc, index) => (
                   <li key={index} className="py-4">
-                    <div className="flex flex-col space-y-2">
-                      <h3 className="font-semibold text-lg">{doc.title}</h3>
-                      <p className="text-sm text-gray-500">File: {doc.file_url}</p>
+                    <div className="flex flex-col space-y-2 ">
+                      <div className="flex flex-row space-x-2">
+                        <h3 className="font-semibold text-lg">{doc.title}</h3>
+                        <span
+                          className={`px-2 py-1 text-sm font-medium rounded-full ${
+                            doc.sync_status === "SYNCED"
+                              ? "bg-green-100 text-green-800"
+                              : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {doc.sync_status}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        File: {doc.file_url}
+                      </p>
                       <div className="flex space-x-2">
                         {/* <a 
-                          href={`http://127.0.0.1:8000/api/v1/documents/download/${doc.id}`}
+                          href={`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/documents/download/${doc.id}`}
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline text-sm"
@@ -356,25 +329,30 @@ export default function BotDetailsPage() {
           {/* File upload section */}
           <div className="flex flex-col items-center mt-6 w-full max-w-md">
             <h2 className="font-bold text-xl mb-4">Upload New Source</h2>
-            <input 
-              type="file" 
-              accept="application/pdf" 
-              onChange={handleFileChange} 
-              className="hidden" 
-              ref={fileInputRef} 
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={handleFileChange}
+              className="hidden"
+              ref={fileInputRef}
             />
-            <button 
-              onClick={() => fileInputRef.current.click()} 
+            <button
+              onClick={() => fileInputRef.current?.click()}
               className="px-4 py-2 bg-gray-300 text-lg rounded-lg shadow-md hover:bg-gray-400 mb-4"
             >
               Choose File
             </button>
             {selectedFile && (
               <>
-                <p className="text-lg text-gray-700 mb-4">Selected file: <strong>{selectedFile.name}</strong></p>
+                <p className="text-lg text-gray-700 mb-4">
+                  Selected file: <strong>{selectedFile.name}</strong>
+                </p>
                 <div className="w-full mb-4">
-                  <label htmlFor="fileName" className="block text-sm font-medium text-gray-700 mb-1">
-                    Document Title:
+                  <label
+                    htmlFor="fileName"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Document label:
                   </label>
                   <input
                     type="text"
@@ -388,14 +366,14 @@ export default function BotDetailsPage() {
                 </div>
               </>
             )}
-            
+
             <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4 w-full">
-              <button 
-                onClick={handleFileUpload} 
+              <button
+                onClick={handleFileUpload}
                 className="px-4 py-2 bg-green-600 text-white text-lg rounded-lg shadow-md hover:bg-green-700"
                 disabled={!selectedFile || !fileName.trim()}
               >
-                Upload to Documents
+                Upload
               </button>
             </div>
 

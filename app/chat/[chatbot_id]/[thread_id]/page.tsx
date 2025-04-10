@@ -1,158 +1,140 @@
-"use client"
+"use client";
 
-import { useState, useRef, useEffect, FormEvent } from "react"
-import { useParams, useRouter } from "next/navigation"
-import { Send } from "lucide-react"
-import { useAuth } from '../../../context/authcontext';
+import { useState, useRef, useEffect, FormEvent } from "react";
+import { useParams } from "next/navigation";
+import { Send } from "lucide-react";
 
 interface Message {
-  role: "user" | "bot"
-  content: string
+  role: "user" | "bot";
+  content: string;
 }
 
 export default function ChatPage() {
-  const params = useParams()
-  const chatbotId = params.chatbot_id as string
-  const threadId = params.thread_id as string
-  const router = useRouter();
+  const params = useParams();
+  const chatbotId = params.chatbot_id as string;
+  const threadId = params.thread_id as string;
 
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [currentBotMessage, setCurrentBotMessage] = useState("")
-  const [error, setError] = useState("")
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentBotMessage, setCurrentBotMessage] = useState("");
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  const { checkSession } = useAuth();
-  const [accessToken, setAccessToken] = useState<string | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const fetchToken = async () => {
-      const token = await checkSession()
-
-      if (!token) {
-        setError("User not authenticated.")
-        router.push("/login")
-        return
-      }
-
-      setAccessToken(token)
-    }
-
-    fetchToken()
-  }, [])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, currentBotMessage]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    inputRef.current?.focus();
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!input.trim()) return
+    e.preventDefault();
+    if (!input.trim()) return;
 
-    const token = await checkSession()
-    if (!token) {
-      setError("User not authenticated.")
-      router.push("/login")
-      return
-    }
-
-    const userMessage: Message = { role: "user", content: input.trim() }
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
+    const userMessage: Message = { role: "user", content: input.trim() };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/chatbots/public/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          
-        },
-        body: JSON.stringify({ chatbot_id: chatbotId, thread_id: threadId, message: userMessage.content }),
-      })
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/chatbots/public/chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chatbot_id: chatbotId,
+            thread_id: threadId,
+            message: userMessage.content,
+          }),
+        }
+      );
 
       if (response.status === 429) {
         setMessages((prev) => [
           ...prev,
-          { role: "bot", content: "Limit has been reached. Please wait for awhile." },
-        ])
-        setIsLoading(false)
-        return
+          {
+            role: "bot",
+            content: "Limit has been reached. Please wait for awhile.",
+          },
+        ]);
+        setIsLoading(false);
+        return;
       }
 
-      if (!response.ok || !response.body) throw new Error("Streaming failed.")
+      if (!response.ok || !response.body) throw new Error("Streaming failed.");
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder("utf-8")
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
 
-      let fullBotMessage = ""; // Store the current bot message
-      let currentWordIndex = 0; // Index to track the current word being revealed
-      let botMessageWords = []; // Array of words in the message to reveal one by one
+      // Reset the current bot message
+      setCurrentBotMessage("");
+
+      // Variable to store the final message
+      let finalMessage = "";
 
       // Read the response stream
       while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+        const { done, value } = await reader.read();
+        if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split("\n")
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
-            const messageData = line.replace("data: ", "").trim()
+            const messageData = line.replace("data: ", "").trim();
             try {
-              const parsedMessage = JSON.parse(messageData)
-              const botMessage = parsedMessage.message // Extract the complete message from the response
-
-              // Split the bot message into words for word-by-word animation
-              botMessageWords = botMessage.split(" ")
-
-              // Reveal the message word by word
-              setInterval(() => {
-                if (currentWordIndex < botMessageWords.length) {
-                  fullBotMessage += " " + botMessageWords[currentWordIndex]
-                  setCurrentBotMessage(fullBotMessage)
-                  currentWordIndex++
-                }
-              }, 100) // Adjust speed of word reveal (100ms)
-
+              const parsedMessage = JSON.parse(messageData);
+              // Keep track of the latest message in our local variable
+              finalMessage = parsedMessage.message;
+              // Update the current bot message for live display
+              setCurrentBotMessage(finalMessage);
             } catch (error) {
-              console.error("Error parsing message:", error)
+              console.error("Error parsing message:", error);
             }
           }
         }
       }
 
-      // Once streaming is complete, add the full bot message to the conversation
-      setMessages((prev) => [...prev, { role: "bot", content: fullBotMessage }])
-
-      // Reset currentBotMessage after the message is added to state
-      setTimeout(() => setCurrentBotMessage(""), 0) // Reset it after the message is added
-
+      // Once streaming is complete, add the final bot message to the conversation
+      // using our local variable instead of the state which might not be updated yet
+      setMessages((prev) => [...prev, { role: "bot", content: finalMessage }]);
+      setCurrentBotMessage("");
     } catch (err) {
-      console.error("Streaming error:", err)
+      console.error("Streaming error:", err);
       setMessages((prev) => [
         ...prev,
         { role: "bot", content: "Something went wrong." },
-      ])
+      ]);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
+
+  // Function to render message content with newlines preserved
+  const renderMessageContent = (content: string) => {
+    return content.split("\n").map((line, i) => (
+      <span key={i}>
+        {line}
+        {i < content.split("\n").length - 1 && <br />}
+      </span>
+    ));
+  };
 
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* If no messages yet - display clean centered prompt */}
       {messages.length === 0 ? (
         <div className="flex-1 flex flex-col justify-center items-center px-4">
-          <h1 className="text-2xl font-semibold mb-4 text-center">What can I help with?</h1>
+          <h1 className="text-2xl font-semibold mb-4 text-center">
+            What can I help with?
+          </h1>
           <form onSubmit={handleSubmit} className="w-full max-w-2xl relative">
             <input
               ref={inputRef}
@@ -180,7 +162,9 @@ export default function ChatPage() {
               {messages.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={`flex ${
+                    message.role === "user" ? "justify-end" : "justify-start"
+                  }`}
                 >
                   <div
                     className={`max-w-[80%] p-4 rounded-lg shadow-sm ${
@@ -189,7 +173,7 @@ export default function ChatPage() {
                         : "bg-white text-gray-800 rounded-bl-none"
                     }`}
                   >
-                    {message.content}
+                    {renderMessageContent(message.content)}
                   </div>
                 </div>
               ))}
@@ -197,7 +181,7 @@ export default function ChatPage() {
               {currentBotMessage && (
                 <div className="flex justify-start">
                   <div className="bg-white p-4 rounded-lg shadow-sm rounded-bl-none text-gray-800 max-w-[80%]">
-                    {currentBotMessage}
+                    {renderMessageContent(currentBotMessage)}
                   </div>
                 </div>
               )}
@@ -232,5 +216,5 @@ export default function ChatPage() {
         </>
       )}
     </div>
-  )
+  );
 }

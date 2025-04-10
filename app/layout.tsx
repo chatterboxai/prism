@@ -1,10 +1,10 @@
 "use client";
 
 import { usePathname } from "next/navigation"; // To get the current page path
-import Navbar from "./components/navbar"; // Import Navbar component
+import Navbar from "@/app/components/navbar"; // Import Navbar component
 import { configureAmplify } from "@/lib/amplify";
-import "./globals.css";
-import { AuthProvider } from "./context/authcontext"; //Import state component
+import "@/app/globals.css";
+import { AuthProvider } from "@/app/context/authcontext"; //Import state component
 
 // Configure Amplify only on the client side
 if (typeof window !== "undefined") {

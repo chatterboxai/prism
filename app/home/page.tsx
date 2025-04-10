@@ -2,58 +2,58 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation"; // To handle redirection
-import { useAuth } from "../context/authcontext"; // Import useAuth hook
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/app/context/authcontext";
+
+type ChatbotCreateRequest = {
+  name: string;
+  description: string;
+};
+
+type ChatbotGetAllResponse = {
+  chatbots: Chatbot[];
+};
 
 export default function HomePage() {
-  const [bots, setBots] = useState<{ id: number; name: string; description: string }[]>([]);
+  const [bots, setBots] = useState<Chatbot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);  // State for modal visibility
-  const [newBot, setNewBot] = useState({ name: "", description: "" });  // State for new bot inputs
-  const { isAuthenticated, checkSession } = useAuth(); // Use Auth context
-
-  const [accessToken, setAccessToken] = useState<string | null>(null); // State to store the access token
-
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newBot, setNewBot] = useState<ChatbotCreateRequest>({
+    name: "",
+    description: "",
+  });
+  const { accessToken } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     const fetchChatbots = async () => {
-      // Check if the user is authenticated before fetching chatbots
-      const token = await checkSession(); // Ensure the session is checked before proceeding
-
-      if (!token) {
+      if (!accessToken) {
         setError("User not authenticated.");
-        router.push("/login"); // Redirect to login if not authenticated
+        router.push("/login");
         return;
       }
 
-      setAccessToken(token); // Set the access token in the state
-
       try {
         // Fetch chatbots from the API
-        const response = await fetch("http://127.0.0.1:8000/api/v1/chatbots", {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,  // Use the access token from the state
-            "Content-Type": "application/json",
-          },
-        });
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/chatbots`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken.toString()}`,
+            },
+          }
+        );
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch chatbots: ${response.statusText}`);
+          console.error("Failed to fetch chatbots:", response.statusText);
+          return;
         }
 
-        const jsonData = await response.json();
+        const jsonData: ChatbotGetAllResponse = await response.json();
         console.log("API Response:", jsonData); // Debugging
-
-        // Extract the correct field from the JSON response
-        if (jsonData && Array.isArray(jsonData.chatbots)) {
-          setBots(jsonData.chatbots);
-        } else {
-          setBots([]);
-          setError("Unexpected API response format.");
-        }
+        setBots(jsonData.chatbots);
       } catch (err) {
         console.error("Error fetching chatbots:", err);
         setError("Failed to load chatbots.");
@@ -63,7 +63,7 @@ export default function HomePage() {
     };
 
     fetchChatbots();
-  }, [isAuthenticated, router]); // Add isAuthenticated and router as dependencies
+  }, [accessToken, router]);
 
   const handleCreateBot = async () => {
     if (!newBot.name || !newBot.description) {
@@ -78,29 +78,30 @@ export default function HomePage() {
 
     try {
       // Create a new bot via POST request
-      const response = await fetch("http://127.0.0.1:8000/api/v1/chatbots", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,  // Use the access token from the state
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: newBot.name,
-          description: newBot.description,
-        }),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/chatbots`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken.toString()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(newBot),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error(`Failed to create chatbot: ${response.statusText}`);
+        console.error("Failed to create chatbot:", response.statusText);
+        return;
       }
 
-      const createdBot = await response.json();
+      const createdBot: Chatbot = await response.json();
       console.log("Bot Created:", createdBot);
 
       // Optionally, update the UI with the newly created bot
       setBots([...bots, createdBot]);
-      setNewBot({ name: "", description: "" });  // Reset inputs
-      setIsModalOpen(false);  // Close the modal
+      setNewBot({ name: "", description: "" }); // Reset inputs
+      setIsModalOpen(false); // Close the modal
     } catch (err) {
       console.error("Error creating chatbot:", err);
       setError("Failed to create chatbot.");
@@ -133,7 +134,7 @@ export default function HomePage() {
       {/* Button to open the modal */}
       <div className="flex justify-center mt-6">
         <button
-          onClick={() => setIsModalOpen(true)}  // Open modal
+          onClick={() => setIsModalOpen(true)} // Open modal
           className="px-6 py-3 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
         >
           Create a new bot
@@ -145,12 +146,14 @@ export default function HomePage() {
         <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-90 transition-all duration-300 ease-in-out">
           <div className="bg-white p-8 rounded-lg shadow-xl w-96 relative">
             <button
-              onClick={() => setIsModalOpen(false)}  // Close modal
+              onClick={() => setIsModalOpen(false)} // Close modal
               className="absolute top-3 right-3 text-2xl"
             >
               &times;
             </button>
-            <h2 className="text-2xl font-semibold mb-4 text-center">Create a New Bot</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-center">
+              Create a New Bot
+            </h2>
             <input
               type="text"
               placeholder="Name"
@@ -162,11 +165,13 @@ export default function HomePage() {
               type="text"
               placeholder="Description"
               value={newBot.description}
-              onChange={(e) => setNewBot({ ...newBot, description: e.target.value })}
+              onChange={(e) =>
+                setNewBot({ ...newBot, description: e.target.value })
+              }
               className="w-full border p-3 mb-4 text-lg rounded-md"
             />
             <button
-              onClick={handleCreateBot}  // Create bot
+              onClick={handleCreateBot} // Create bot
               className="w-full px-4 py-3 bg-green-600 text-white text-lg rounded-lg shadow-md hover:bg-green-700"
             >
               Create
