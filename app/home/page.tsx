@@ -23,19 +23,30 @@ export default function HomePage() {
     name: "",
     description: "",
   });
-  const { accessToken } = useAuth();
+
+  const { accessToken, isAuthReady } = useAuth();
   const router = useRouter();
 
+  // Handle authentication check and redirect
   useEffect(() => {
-    const fetchChatbots = async () => {
-      if (!accessToken) {
-        setError("User not authenticated.");
-        router.push("/login");
-        return;
-      }
+    if (isAuthReady && !accessToken) {
+      router.push("/login");
+    }
+  }, [isAuthReady, accessToken, router]);
 
+  // Fetch chatbots only when auth is confirmed
+  // Separate effect to prevent loops with updateSession
+  useEffect(() => {
+    // Skip if auth is not ready or no token
+    if (!isAuthReady || !accessToken) return;
+    
+    // Add guard to prevent multiple fetches
+    let isMounted = true;
+    
+    const fetchChatbots = async () => {
       try {
-        // Fetch chatbots from the API
+        console.log("Fetching chatbots...");
+        
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/chatbots`,
           {
@@ -46,24 +57,39 @@ export default function HomePage() {
           }
         );
 
+        // Skip processing if component unmounted
+        if (!isMounted) return;
+
         if (!response.ok) {
           console.error("Failed to fetch chatbots:", response.statusText);
+          setError("Failed to fetch chatbots.");
           return;
         }
 
         const jsonData: ChatbotGetAllResponse = await response.json();
-        console.log("API Response:", jsonData); // Debugging
+        console.log("Received chatbots:", jsonData.chatbots.length);
         setBots(jsonData.chatbots);
       } catch (err) {
+        // Skip error handling if component unmounted
+        if (!isMounted) return;
+        
         console.error("Error fetching chatbots:", err);
         setError("Failed to load chatbots.");
       } finally {
-        setLoading(false);
+        // Only update loading state if still mounted
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchChatbots();
-  }, [accessToken, router]);
+    
+    // Cleanup function to prevent state updates if component unmounts
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, isAuthReady]); // Minimal dependencies
 
   const handleCreateBot = async () => {
     if (!newBot.name || !newBot.description) {
@@ -77,7 +103,6 @@ export default function HomePage() {
     }
 
     try {
-      // Create a new bot via POST request
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/chatbots`,
         {
@@ -92,21 +117,37 @@ export default function HomePage() {
 
       if (!response.ok) {
         console.error("Failed to create chatbot:", response.statusText);
+        setError("Failed to create chatbot.");
         return;
       }
 
       const createdBot: Chatbot = await response.json();
-      console.log("Bot Created:", createdBot);
-
-      // Optionally, update the UI with the newly created bot
-      setBots([...bots, createdBot]);
-      setNewBot({ name: "", description: "" }); // Reset inputs
-      setIsModalOpen(false); // Close the modal
+      setBots((prev) => [...prev, createdBot]);
+      setNewBot({ name: "", description: "" });
+      setIsModalOpen(false);
     } catch (err) {
       console.error("Error creating chatbot:", err);
       setError("Failed to create chatbot.");
     }
   };
+
+  // Show loading state while checking authentication
+  if (!isAuthReady) {
+    return (
+      <div className="p-10 bg-gray-100 min-h-screen flex flex-col items-center justify-center">
+        <p className="text-lg text-gray-600">Checking authentication...</p>
+      </div>
+    );
+  }
+
+  // If auth is ready but no token, the first useEffect will handle redirect
+  if (isAuthReady && !accessToken) {
+    return (
+      <div className="p-10 bg-gray-100 min-h-screen flex flex-col items-center justify-center">
+        <p className="text-lg text-gray-600">Redirecting to login...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-10 bg-gray-100 min-h-screen flex flex-col items-center">
@@ -131,22 +172,20 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Button to open the modal */}
       <div className="flex justify-center mt-6">
         <button
-          onClick={() => setIsModalOpen(true)} // Open modal
+          onClick={() => setIsModalOpen(true)}
           className="px-6 py-3 bg-blue-600 text-white text-lg rounded-lg shadow-md hover:bg-blue-700"
         >
           Create a new bot
         </button>
       </div>
 
-      {/* Modal for creating new bot */}
       {isModalOpen && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-90 transition-all duration-300 ease-in-out">
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-200 bg-opacity-90 z-50">
           <div className="bg-white p-8 rounded-lg shadow-xl w-96 relative">
             <button
-              onClick={() => setIsModalOpen(false)} // Close modal
+              onClick={() => setIsModalOpen(false)}
               className="absolute top-3 right-3 text-2xl"
             >
               &times;
@@ -171,7 +210,7 @@ export default function HomePage() {
               className="w-full border p-3 mb-4 text-lg rounded-md"
             />
             <button
-              onClick={handleCreateBot} // Create bot
+              onClick={handleCreateBot}
               className="w-full px-4 py-3 bg-green-600 text-white text-lg rounded-lg shadow-md hover:bg-green-700"
             >
               Create

@@ -10,16 +10,25 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { accessToken, updateSession, isAuthReady } = useAuth();
   const router = useRouter();
 
-  const { accessToken } = useAuth();
-
+  // Redirect to home if already logged in
   useEffect(() => {
-    // Check authentication status as soon as the component is mounted
-    if (accessToken) {
+    if (isAuthReady && accessToken) {
       router.push("/home");
     }
-  }, [router, accessToken]);
+  }, [accessToken, router, isAuthReady]);
+
+  // If still checking auth status, show nothing to prevent flash
+  if (!isAuthReady) {
+    return <div className="flex min-h-screen items-center justify-center bg-gray-100">
+      <p className="text-gray-600">Loading...</p>
+    </div>;
+  }
+
+  // If auth is ready and we have a token, the useEffect will handle redirect
+  // If auth is ready and we don't have a token, show the login form
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -39,6 +48,7 @@ export default function LoginPage() {
       });
 
       if (isSignedIn) {
+        await updateSession(); // update context after sign in
         router.push("/home");
       }
     } catch (err) {

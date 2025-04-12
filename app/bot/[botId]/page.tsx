@@ -25,19 +25,22 @@ export default function BotDetailsPage() {
   const [documents, setDocuments] = useState<ChatbotDocument[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
 
-  const { accessToken } = useAuth();
+  const { accessToken, isAuthReady } = useAuth();
   const router = useRouter();
+
+  // Handle authentication check
+  useEffect(() => {
+    if (isAuthReady && !accessToken) {
+      router.push("/login");
+    }
+  }, [accessToken, isAuthReady, router]);
 
   // Function to fetch bot documents
   const fetchBotDocuments = useCallback(async () => {
+    if (!isAuthReady || !accessToken || !bot_id) return;
+
     setLoadingDocuments(true);
     setError("");
-
-    if (!accessToken) {
-      setError("No access token available.");
-      router.push("/login");
-      return;
-    }
 
     try {
       const response = await fetch(
@@ -45,9 +48,7 @@ export default function BotDetailsPage() {
         {
           method: "GET",
           headers: {
-            Authorization: accessToken
-              ? `Bearer ${accessToken.toString()}`
-              : "",
+            Authorization: `Bearer ${accessToken.toString()}`,
             "Content-Type": "application/json",
           },
         }
@@ -71,17 +72,13 @@ export default function BotDetailsPage() {
     } finally {
       setLoadingDocuments(false);
     }
-  }, [bot_id, accessToken, router]);
+  }, [bot_id, accessToken, isAuthReady]);
 
+  // Fetch bot details after authentication is confirmed
   useEffect(() => {
     const fetchBotDetails = async () => {
-      // Ensure user is authenticated before fetching bot details
-      if (!accessToken) {
-        setError("User not authenticated.");
-        router.push("/login");
-        return;
-      }
-
+      if (!isAuthReady || !accessToken || !bot_id) return;
+      
       try {
         // Fetch bot details from the API
         const response = await fetch(
@@ -89,9 +86,7 @@ export default function BotDetailsPage() {
           {
             method: "GET",
             headers: {
-              Authorization: accessToken
-                ? `Bearer ${accessToken.toString()}`
-                : "",
+              Authorization: `Bearer ${accessToken.toString()}`,
               "Content-Type": "application/json",
             },
           }
@@ -121,10 +116,8 @@ export default function BotDetailsPage() {
       }
     };
 
-    if (bot_id) {
-      fetchBotDetails();
-    }
-  }, [accessToken, bot_id, router, fetchBotDocuments]);
+    fetchBotDetails();
+  }, [accessToken, bot_id, router, fetchBotDocuments, isAuthReady]);
 
   const handleOpenChat = () => {
     const threadId = uuidv4();
@@ -193,9 +186,7 @@ export default function BotDetailsPage() {
         {
           method: "POST",
           headers: {
-            Authorization: accessToken
-              ? `Bearer ${accessToken.toString()}`
-              : "",
+            Authorization: `Bearer ${accessToken.toString()}`,
             // Don't set Content-Type when using FormData - the browser will set it
           },
           body: formData,
@@ -215,32 +206,22 @@ export default function BotDetailsPage() {
       setSelectedFile(undefined);
       setFileName("");
 
-      // Refresh bot details to include the new file
-      const refreshResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/v1/chatbots/${bot_id}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: accessToken
-              ? `Bearer ${accessToken.toString()}`
-              : "",
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (refreshResponse.ok) {
-        const refreshedData: Chatbot = await refreshResponse.json();
-        setBotDetails(refreshedData);
-
-        // Also refresh the documents list
-        fetchBotDocuments();
-      }
+      // Refresh documents list after upload
+      fetchBotDocuments();
     } catch (err) {
       console.error("Error uploading file:", err);
       setError("Failed to upload file");
     }
   };
+
+  // Show loading state while checking authentication
+  if (!isAuthReady || (isAuthReady && !accessToken)) {
+    return (
+      <div className="p-10 bg-gray-100 min-h-screen flex flex-col items-center">
+        <p className="text-lg text-gray-600">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-10 bg-gray-100 min-h-screen flex flex-col items-center">
