@@ -2,19 +2,24 @@
 
 "use client";
 
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, X, LogOut } from "lucide-react";
 import { signOut } from "aws-amplify/auth";
+import { useAuth } from "@/app/context/authcontext"; 
 
 export default function Navbar() {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { updateSession } = useAuth();
 
   const handleLogout = async () => {
     try {
       await signOut();
+      await updateSession(); // 
       console.log("User logged out");
+      router.push("/login"); // Redirect to login page
     } catch (error) {
       console.error("Error logging out:", error);
     }
